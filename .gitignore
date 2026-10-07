@@ -1,0 +1,33 @@
+# Secretos y entorno
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Node
+node_modules/
+dist/
+.vite/
+npm-debug.log*
+
+# Docker y datos locales
+*.log
+pgdata/
+redisdata/
+
+# Editor y sistema
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
