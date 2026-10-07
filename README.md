@@ -26,13 +26,67 @@ React + Vite · FastAPI (Python) · LangChain + LLM externo · PostgreSQL · Red
 
 ## Instalación y ejecución
 
-_Se completa durante el Sprint 0 (US-00)._ Debe permitir levantar el sistema en local siguiendo estos pasos:
+Requisitos: Git, Docker Desktop, Python 3.11 o superior y Node.js 20.19 o superior.
 
-1. Clonar el repositorio.
-2. Copiar `.env.example` a `.env` y completar los valores.
-3. Levantar los servicios con Docker Compose.
-4. Ejecutar las migraciones de base de datos.
-5. Abrir la plataforma web y el panel administrativo.
+### 1. Clonar el repositorio
+
+```
+git clone https://github.com/pabloyanez5/joyeria-xavier.git
+cd joyeria-xavier
+```
+
+### 2. Base de datos y caché (PostgreSQL y Redis)
+
+```
+cd 04_despliegue_ci_cd
+docker compose up -d
+docker compose ps
+```
+
+Ambos contenedores deben aparecer como `healthy`. Para apagarlos: `docker compose down`.
+Los valores por defecto coinciden con `.env.example`, así que no necesitas crear un `.env` para desarrollo local.
+
+### 3. Backend (FastAPI)
+
+```
+cd 02_codigo_fuente/backend
+python -m venv .venv
+.venv\Scripts\activate          # en Linux/macOS: source .venv/bin/activate
+pip install -r requirements.txt
+alembic upgrade head            # aplica las migraciones a PostgreSQL
+pytest                          # ejecuta las pruebas
+uvicorn app.main:app --reload
+```
+
+Comprobación: `http://127.0.0.1:8000/health` debe responder `{"status":"ok"}`. La documentación automática está en `http://127.0.0.1:8000/docs`.
+
+### 4. Frontend (React + Vite)
+
+```
+cd 02_codigo_fuente/frontend/web
+npm install
+npm run dev
+```
+
+Abre `http://localhost:5173`.
+
+### Nota para Windows con Control de aplicaciones
+
+Si Windows bloquea binarios compilados (error "Una directiva de Control de aplicaciones bloqueó este archivo"), instala SQLAlchemy en Python puro:
+
+```
+set DISABLE_SQLALCHEMY_CEXT=1
+pip install --no-binary sqlalchemy --no-cache-dir sqlalchemy
+```
+
+La conexión a PostgreSQL usa `pg8000` (Python puro) justamente para evitar ese bloqueo.
+
+### Nueva migración
+
+```
+alembic revision --autogenerate -m "descripcion"
+alembic upgrade head
+```
 
 ## Variables y secretos
 
