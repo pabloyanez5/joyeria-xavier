@@ -1,6 +1,7 @@
 import pytest
 from fastapi.testclient import TestClient
 
+from app.cache import get_cache
 from app.db import get_session
 from app.main import app
 
@@ -35,8 +36,9 @@ def test_verificacion_token_invalido(monkeypatch):
 
 
 @pytest.fixture
-def api(session):
+def api(session, cache):
     app.dependency_overrides[get_session] = lambda: session
+    app.dependency_overrides[get_cache] = lambda: cache
     yield TestClient(app)
     app.dependency_overrides.clear()
 

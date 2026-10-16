@@ -1,9 +1,11 @@
+import fakeredis
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 import app.models  # noqa: F401
+from app.cache import CacheIdentidad
 from app.db import Base
 
 
@@ -17,3 +19,8 @@ def session():
     Base.metadata.create_all(engine)
     with sessionmaker(bind=engine)() as s:
         yield s
+
+
+@pytest.fixture
+def cache():
+    return CacheIdentidad(fakeredis.FakeRedis(decode_responses=True))
