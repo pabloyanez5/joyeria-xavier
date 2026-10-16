@@ -4,7 +4,8 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from fastapi.responses import PlainTextResponse
 from sqlalchemy.orm import Session
 
-from app.clientes import registrar_cliente
+from app.cache import CacheIdentidad, get_cache
+from app.clientes import identificar_cliente
 from app.db import get_session
 
 router = APIRouter(prefix="/webhook", tags=["webhook"])
@@ -60,10 +61,12 @@ def verificar_webhook(
 
 @router.post("/meta")
 def recibir_mensaje(
-    payload: dict = Body(...), session: Session = Depends(get_session)
+    payload: dict = Body(...),
+    session: Session = Depends(get_session),
+    cache: CacheIdentidad = Depends(get_cache),
 ):
     nuevos = 0
     for canal, id_canal, nombre in extraer_remitentes(payload):
-        _, creado = registrar_cliente(session, canal, id_canal, nombre)
+        _, creado = identificar_cliente(session, cache, canal, id_canal, nombre)
         nuevos += creado
     return {"status": "ok", "clientes_nuevos": nuevos}
