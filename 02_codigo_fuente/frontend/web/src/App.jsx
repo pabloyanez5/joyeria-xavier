@@ -23,7 +23,161 @@ function construirConsulta({ categoria, material, q, precioMax }) {
   return texto ? `?${texto}` : ''
 }
 
-function Tarjeta({ producto }) {
+function Configurador({ productoId, onCerrar }) {
+  const [detalle, setDetalle] = useState({ producto: null, error: null })
+  const [seleccion, setSeleccion] = useState(null)
+  const [cotizacion, setCotizacion] = useState({
+    clave: null,
+    datos: null,
+    error: null,
+    ms: null,
+  })
+
+  const combos = detalle.producto?.precios ?? []
+  const materiales = [...new Set(combos.map((c) => c.material))]
+  const todosQuilatajes = [
+    ...new Set(combos.map((c) => c.quilataje).filter(Boolean)),
+  ].sort()
+  const quilatajesDe = (m) =>
+    combos.filter((c) => c.material === m).map((c) => c.quilataje).filter(Boolean)
+
+  const material = seleccion?.material ?? null
+  const quilataje = seleccion?.quilataje ?? null
+  const clave = `${material}|${quilataje ?? ''}`
+
+  useEffect(() => {
+    fetch(`/api/productos/${productoId}`)
+      .then((r) => {
+        if (!r.ok) throw new Error(`Error ${r.status} al cargar la joya`)
+        return r.json()
+      })
+      .then((producto) => {
+        setDetalle({ producto, error: null })
+        const primero = producto.precios[0]
+        if (primero) {
+          setSeleccion({
+            material: primero.material,
+            quilataje: primero.quilataje,
+          })
+        }
+      })
+      .catch((e) => setDetalle({ producto: null, error: e.message }))
+  }, [productoId])
+
+  useEffect(() => {
+    if (material === null) return undefined
+    const control = new AbortController()
+    const inicio = performance.now()
+    const params = new URLSearchParams({ material })
+    if (quilataje) params.set('quilataje', quilataje)
+    fetch(`/api/productos/${productoId}/cotizacion?${params}`, {
+      signal: control.signal,
+    })
+      .then((r) => {
+        if (!r.ok) throw new Error('Combinación no disponible')
+        return r.json()
+      })
+      .then((datos) =>
+        setCotizacion({
+          clave,
+          datos,
+          error: null,
+          ms: Math.round(performance.now() - inicio),
+        }),
+      )
+      .catch((e) => {
+        if (e.name !== 'AbortError') {
+          setCotizacion({ clave, datos: null, error: e.message, ms: null })
+        }
+      })
+    return () => control.abort()
+  }, [productoId, material, quilataje, clave])
+
+  function cambiarMaterial(e) {
+    const m = e.target.value
+    setSeleccion({ material: m, quilataje: quilatajesDe(m)[0] ?? null })
+  }
+
+  function cambiarQuilataje(e) {
+    setSeleccion((s) => ({ ...s, quilataje: e.target.value }))
+  }
+
+  const cotizando = material !== null && cotizacion.clave !== clave
+  const disponibles = material ? quilatajesDe(material) : []
+
+  return (
+    <div className="fondo-modal" onClick={onCerrar}>
+      <div
+        className="modal"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Configurar joya"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {detalle.error && <p className="estado error">{detalle.error}</p>}
+        {!detalle.error && !detalle.producto && <p className="estado">Cargando…</p>}
+        {detalle.producto && (
+          <>
+            <span className="categoria">{detalle.producto.categoria}</span>
+            <h2>{detalle.producto.nombre}</h2>
+            <p className="descripcion">{detalle.producto.descripcion}</p>
+
+            <div className="selectores">
+              <label>
+                Material
+                <select value={material ?? ''} onChange={cambiarMaterial}>
+                  {materiales.map((m) => (
+                    <option key={m} value={m}>
+                      {m}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Quilataje
+                <select
+                  value={quilataje ?? ''}
+                  onChange={cambiarQuilataje}
+                  disabled={disponibles.length === 0}
+                >
+                  {disponibles.length === 0 && <option value="">No aplica</option>}
+                  {todosQuilatajes.map((q) => (
+                    <option key={q} value={q} disabled={!disponibles.includes(q)}>
+                      {q}
+                      {disponibles.includes(q) ? '' : ' (no disponible)'}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+
+            <div className="resultado" aria-live="polite">
+              {cotizando && <span className="estado">Calculando…</span>}
+              {!cotizando && cotizacion.error && (
+                <span className="estado error">{cotizacion.error}</span>
+              )}
+              {!cotizando && cotizacion.datos && (
+                <>
+                  <span className="precio-grande">
+                    {dinero(cotizacion.datos.precio)}
+                  </span>
+                  <span className="nota">
+                    Precio referencial · respondió en {cotizacion.ms} ms
+                  </span>
+                </>
+              )}
+            </div>
+          </>
+        )}
+        <button type="button" className="boton" onClick={onCerrar}>
+          Cerrar
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function Tarjeta({ producto, onConfigurar }) {
   return (
     <li className="tarjeta">
       <span className="categoria">{producto.categoria}</span>
@@ -39,6 +193,13 @@ function Tarjeta({ producto }) {
       {producto.precio_desde && (
         <span className="desde">Desde {dinero(producto.precio_desde)}</span>
       )}
+      <button
+        type="button"
+        className="boton primario"
+        onClick={() => onConfigurar(producto.id)}
+      >
+        Configurar y cotizar
+      </button>
     </li>
   )
 }
@@ -46,6 +207,7 @@ function Tarjeta({ producto }) {
 function App() {
   const [filtros, setFiltros] = useState(FILTROS_VACIOS)
   const [categorias, setCategorias] = useState([])
+  const [configurando, setConfigurando] = useState(null)
   const [resultado, setResultado] = useState({
     consulta: null,
     productos: [],
@@ -144,9 +306,17 @@ function App() {
 
       <ul className="rejilla">
         {resultado.productos.map((p) => (
-          <Tarjeta key={p.id} producto={p} />
+          <Tarjeta key={p.id} producto={p} onConfigurar={setConfigurando} />
         ))}
       </ul>
+
+      {configurando !== null && (
+        <Configurador
+          key={configurando}
+          productoId={configurando}
+          onCerrar={() => setConfigurando(null)}
+        />
+      )}
     </main>
   )
 }
