@@ -1,121 +1,153 @@
-import { useState } from 'react'
-import heroImg from './assets/hero.png'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
+import { useEffect, useState } from 'react'
 import './App.css'
 
+const MATERIALES = ['oro', 'plata']
+const FILTROS_VACIOS = { categoria: '', material: '', q: '', precioMax: '' }
+
+const formatoDolar = new Intl.NumberFormat('es-EC', {
+  style: 'currency',
+  currency: 'USD',
+})
+
+function dinero(valor) {
+  return formatoDolar.format(Number(valor))
+}
+
+function construirConsulta({ categoria, material, q, precioMax }) {
+  const params = new URLSearchParams()
+  if (categoria) params.set('categoria', categoria)
+  if (material) params.set('material', material)
+  if (q.trim()) params.set('q', q.trim())
+  if (precioMax) params.set('precio_max', precioMax)
+  const texto = params.toString()
+  return texto ? `?${texto}` : ''
+}
+
+function Tarjeta({ producto }) {
+  return (
+    <li className="tarjeta">
+      <span className="categoria">{producto.categoria}</span>
+      <h2>{producto.nombre}</h2>
+      <p className="descripcion">{producto.descripcion}</p>
+      <ul className="opciones">
+        {producto.precios.map((p) => (
+          <li key={`${p.material}-${p.quilataje}`}>
+            {p.material} {p.quilataje ?? ''} · {dinero(p.precio)}
+          </li>
+        ))}
+      </ul>
+      {producto.precio_desde && (
+        <span className="desde">Desde {dinero(producto.precio_desde)}</span>
+      )}
+    </li>
+  )
+}
+
 function App() {
-  const [count, setCount] = useState(0)
+  const [filtros, setFiltros] = useState(FILTROS_VACIOS)
+  const [categorias, setCategorias] = useState([])
+  const [resultado, setResultado] = useState({
+    consulta: null,
+    productos: [],
+    error: null,
+  })
+
+  const consulta = construirConsulta(filtros)
+  const cargando = resultado.consulta !== consulta
+
+  useEffect(() => {
+    fetch('/api/productos/categorias')
+      .then((r) => (r.ok ? r.json() : []))
+      .then(setCategorias)
+      .catch(() => setCategorias([]))
+  }, [])
+
+  useEffect(() => {
+    const control = new AbortController()
+    fetch(`/api/productos${consulta}`, { signal: control.signal })
+      .then((r) => {
+        if (!r.ok) throw new Error(`Error ${r.status} al consultar el catálogo`)
+        return r.json()
+      })
+      .then((productos) => setResultado({ consulta, productos, error: null }))
+      .catch((e) => {
+        if (e.name !== 'AbortError') {
+          setResultado({ consulta, productos: [], error: e.message })
+        }
+      })
+    return () => control.abort()
+  }, [consulta])
+
+  function cambiar(campo) {
+    return (e) => setFiltros((f) => ({ ...f, [campo]: e.target.value }))
+  }
 
   return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
-        </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.jsx</code> and save to test <code>HMR</code>
-          </p>
-        </div>
-        <button
-          type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
+    <main className="pagina">
+      <header className="encabezado">
+        <h1>Joyería Xavier</h1>
+        <p>Catálogo de joyas</p>
+      </header>
+
+      <section className="filtros" aria-label="Filtros">
+        <label>
+          Buscar
+          <input
+            type="search"
+            value={filtros.q}
+            onChange={cambiar('q')}
+            placeholder="Nombre de la joya"
+          />
+        </label>
+        <label>
+          Categoría
+          <select value={filtros.categoria} onChange={cambiar('categoria')}>
+            <option value="">Todas</option>
+            {categorias.map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Material
+          <select value={filtros.material} onChange={cambiar('material')}>
+            <option value="">Todos</option>
+            {MATERIALES.map((m) => (
+              <option key={m} value={m}>
+                {m}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Precio máximo (USD)
+          <input
+            type="number"
+            min="0"
+            value={filtros.precioMax}
+            onChange={cambiar('precioMax')}
+            placeholder="Ej. 500"
+          />
+        </label>
+        <button type="button" onClick={() => setFiltros(FILTROS_VACIOS)}>
+          Limpiar filtros
         </button>
       </section>
 
-      <div className="ticks"></div>
+      {resultado.error && <p className="estado error">{resultado.error}</p>}
+      {!resultado.error && cargando && <p className="estado">Cargando…</p>}
+      {!resultado.error && !cargando && resultado.productos.length === 0 && (
+        <p className="estado">No hay joyas con esos filtros.</p>
+      )}
 
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
-        </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
-
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
+      <ul className="rejilla">
+        {resultado.productos.map((p) => (
+          <Tarjeta key={p.id} producto={p} />
+        ))}
+      </ul>
+    </main>
   )
 }
 
