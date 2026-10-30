@@ -1,9 +1,11 @@
 from fastapi import FastAPI
 
+from app.catalogo import router as catalogo_router
 from app.webhook import router as webhook_router
 
 app = FastAPI(title="Joyería Xavier API", version="0.1.0")
 app.include_router(webhook_router)
+app.include_router(catalogo_router)
 
 
 @app.get("/health")
