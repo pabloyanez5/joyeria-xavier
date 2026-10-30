@@ -109,3 +109,40 @@ def detalle_producto(producto_id: int, session: Session = Depends(get_session)):
     if producto is None or not producto.activo:
         raise HTTPException(status_code=404, detail="Producto no encontrado")
     return armar_salida(producto, precios_vigentes(session, [producto.id]).get(producto.id, []))
+
+class CotizacionOut(BaseModel):
+    producto_id: int
+    nombre: str
+    material: str
+    quilataje: str | None
+    precio: Decimal
+    moneda: str = "USD"
+    referencial: bool = True
+
+
+def _igual(a: str | None, b: str | None) -> bool:
+    return (a or "").lower() == (b or "").lower()
+
+
+@router.get("/{producto_id}/cotizacion", response_model=CotizacionOut)
+def cotizar(
+    producto_id: int,
+    material: str,
+    quilataje: str | None = None,
+    session: Session = Depends(get_session),
+):
+    producto = session.get(Producto, producto_id)
+    if producto is None or not producto.activo:
+        raise HTTPException(status_code=404, detail="Producto no encontrado")
+    for p in precios_vigentes(session, [producto.id]).get(producto.id, []):
+        if _igual(p.material, material) and _igual(p.quilataje, quilataje):
+            return CotizacionOut(
+                producto_id=producto.id,
+                nombre=producto.nombre,
+                material=p.material,
+                quilataje=p.quilataje,
+                precio=p.precio,
+            )
+    raise HTTPException(
+        status_code=422, detail="Combinación no disponible para este producto"
+    )

@@ -78,3 +78,51 @@ def test_categorias_sin_repetir_ni_inactivos(api, catalogo):
 def test_detalle_inexistente_o_inactivo_da_404(api, catalogo):
     assert api.get("/productos/9999").status_code == 404
     assert api.get(f"/productos/{catalogo['viejo']}").status_code == 404
+
+
+def test_cotiza_material_y_quilataje(api, catalogo):
+    r = api.get(
+        f"/productos/{catalogo['anillo']}/cotizacion",
+        params={"material": "oro", "quilataje": "18k"},
+    )
+    assert r.status_code == 200
+    datos = r.json()
+    assert Decimal(datos["precio"]) == Decimal("450")
+    assert datos["moneda"] == "USD"
+    assert datos["referencial"] is True
+
+
+def test_cotiza_material_sin_quilataje(api, catalogo):
+    r = api.get(
+        f"/productos/{catalogo['anillo']}/cotizacion", params={"material": "plata"}
+    )
+    assert r.status_code == 200
+    assert Decimal(r.json()["precio"]) == Decimal("80")
+
+
+def test_combinacion_no_disponible_da_422(api, catalogo):
+    combinaciones = [
+        {"material": "oro", "quilataje": "24k"},
+        {"material": "plata", "quilataje": "18k"},
+        {"material": "oro"},
+        {"material": "platino"},
+    ]
+    for params in combinaciones:
+        r = api.get(f"/productos/{catalogo['anillo']}/cotizacion", params=params)
+        assert r.status_code == 422
+
+
+def test_cotizacion_de_producto_inexistente_da_404(api, catalogo):
+    r = api.get("/productos/9999/cotizacion", params={"material": "oro"})
+    assert r.status_code == 404
+
+
+def test_cotizacion_responde_en_menos_de_2_segundos(api, catalogo):
+    from time import perf_counter
+
+    inicio = perf_counter()
+    api.get(
+        f"/productos/{catalogo['anillo']}/cotizacion",
+        params={"material": "oro", "quilataje": "18k"},
+    )
+    assert perf_counter() - inicio < 2
