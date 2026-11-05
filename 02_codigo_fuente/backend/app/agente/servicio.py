@@ -169,7 +169,8 @@ def atender_mensaje(
             id_externo=id_externo,
         )
     )
-    _recordar(cliente, ctx.extraer(texto))
+    datos = ctx.extraer(texto)
+    _recordar(cliente, datos)
     conversacion.actualizado_en = func.now()
 
     if conversacion.estado == "escalada":
@@ -177,6 +178,11 @@ def atender_mensaje(
         return RespuestaAgente(None, None, conversacion.id, cliente.id, escalada=True)
 
     intencion = clasificar(texto, proveedor)
+    if intencion == "otro" and (
+        datos.contexto.get("categoria") or datos.contexto.get("material")
+    ):
+        # Mencionó una joya o un material sin pedir nada concreto: le mostramos el catálogo.
+        intencion = "catalogo"
     respuesta, escalar = redactar(
         intencion, cliente.nombre_preferido, cliente.contexto_cualificacion or {}
     )

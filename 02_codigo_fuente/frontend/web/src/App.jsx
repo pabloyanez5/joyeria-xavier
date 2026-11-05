@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import './App.css'
+import Chat from './Chat.jsx'
 
 const MATERIALES = ['oro', 'plata']
 const FILTROS_VACIOS = { categoria: '', material: '', q: '', precioMax: '' }
@@ -273,8 +274,19 @@ function Tarjeta({ producto, onConfigurar }) {
   )
 }
 
+// Los enlaces del asistente llevan filtros en la URL (?categoria=Anillos&material=oro).
+function filtrosDesdeUrl() {
+  const params = new URLSearchParams(window.location.search)
+  const material = params.get('material') ?? ''
+  return {
+    ...FILTROS_VACIOS,
+    categoria: params.get('categoria') ?? '',
+    material: MATERIALES.includes(material) ? material : '',
+  }
+}
+
 function App() {
-  const [filtros, setFiltros] = useState(FILTROS_VACIOS)
+  const [filtros, setFiltros] = useState(filtrosDesdeUrl)
   const [categorias, setCategorias] = useState([])
   const [configurando, setConfigurando] = useState(null)
   const [resultado, setResultado] = useState({
@@ -384,6 +396,8 @@ function App() {
           <Tarjeta key={p.id} producto={p} onConfigurar={setConfigurando} />
         ))}
       </ul>
+
+      <Chat />
 
       {configurando !== null && (
         <Configurador

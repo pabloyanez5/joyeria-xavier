@@ -79,6 +79,13 @@ def test_recuerda_lo_que_dice_el_cliente_y_lo_usa_despues(session, cache, monkey
     assert "anillos de plata" in saludo.texto
 
 
+def test_si_menciona_una_joya_sin_pedir_nada_se_le_muestra_el_catalogo(session, cache, monkeypatch):
+    monkeypatch.setenv("WEB_URL", "https://joyeria.test")
+    r = _enviar(session, cache, "busco un anillo de plata")
+    assert r.intencion == "catalogo"
+    assert "categoria=Anillos" in r.texto and "material=plata" in r.texto
+
+
 def test_el_contexto_se_acumula_sin_perder_lo_anterior(session, cache):
     _enviar(session, cache, "quiero una cadena")
     _enviar(session, cache, "de oro 18k")
