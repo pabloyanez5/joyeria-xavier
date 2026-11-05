@@ -247,3 +247,103 @@ a.boton {
   text-align: center;
   text-decoration: none;
 }
+
+.chat-abrir {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  padding: 12px 18px;
+  border-radius: 999px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.2);
+  z-index: 20;
+}
+
+.chat {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  width: min(380px, calc(100vw - 32px));
+  height: min(520px, calc(100vh - 32px));
+  display: flex;
+  flex-direction: column;
+  background: var(--tarjeta);
+  border: 1px solid var(--linea);
+  border-radius: 14px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.25);
+  z-index: 20;
+  overflow: hidden;
+}
+
+.chat-cabecera {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--linea);
+}
+
+.chat-cabecera span {
+  display: flex;
+  gap: 6px;
+}
+
+.chat-cabecera button {
+  padding: 4px 8px;
+  font-size: 0.8rem;
+}
+
+.chat-mensajes {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+}
+
+.burbuja {
+  margin: 0;
+  padding: 8px 12px;
+  max-width: 85%;
+  border-radius: 12px;
+  font-size: 0.9rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.burbuja.agente {
+  align-self: flex-start;
+  background: #f4efe6;
+  color: #2b2b2b;
+}
+
+.burbuja.cliente {
+  align-self: flex-end;
+  background: #2b2b2b;
+  color: #fff;
+}
+
+.burbuja.sistema {
+  align-self: center;
+  background: transparent;
+  color: var(--suave);
+  font-size: 0.8rem;
+  text-align: center;
+}
+
+.chat-form {
+  display: flex;
+  gap: 8px;
+  padding: 10px;
+  border-top: 1px solid var(--linea);
+}
+
+.chat-form input {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 10px;
+  font: inherit;
+  border: 1px solid var(--linea);
+  border-radius: 8px;
+}

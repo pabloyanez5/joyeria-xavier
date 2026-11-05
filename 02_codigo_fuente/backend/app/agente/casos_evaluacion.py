@@ -1,0 +1,61 @@
+"""Set de 50 mensajes de ejemplo con su intención esperada (criterio de JOY-15)."""
+
+CASOS: list[tuple[str, str]] = [
+    # saludo (6)
+    ("Hola", "saludo"),
+    ("Buenos días", "saludo"),
+    ("buenas tardes, ¿cómo están?", "saludo"),
+    ("Hola buenas noches", "saludo"),
+    ("hey, qué tal", "saludo"),
+    ("Saludos, ¿hay alguien por ahí?", "saludo"),
+    # cotizar (9)
+    ("¿Cuánto cuesta un anillo de oro 18k?", "cotizar"),
+    ("Quiero cotizar unas argollas de matrimonio", "cotizar"),
+    ("me pueden dar el precio de una cadena cubana", "cotizar"),
+    ("hola, necesito un presupuesto para unos aretes", "cotizar"),
+    ("cuanto vale el anillo solitario en plata", "cotizar"),
+    ("Quisiera saber el costo de un dije de corazón", "cotizar"),
+    ("¿cuánto me saldría una pulsera tejida en oro?", "cotizar"),
+    ("precio de las argollas?", "cotizar"),
+    ("Quisiera saber cuánto tendría que pagar por unas argollas", "cotizar"),
+    # catalogo (8)
+    ("¿Qué modelos de anillos tienen?", "catalogo"),
+    ("Me gustaría ver el catálogo", "catalogo"),
+    ("muéstrame las cadenas que venden", "catalogo"),
+    ("¿tienen pulseras de plata?", "catalogo"),
+    ("que diseños de aretes manejan", "catalogo"),
+    ("quiero ver sus joyas", "catalogo"),
+    ("Tienen fotos de las argollas?", "catalogo"),
+    ("Estoy buscando un regalo para mi esposa", "catalogo"),
+    # estado_pedido (8)
+    ("¿Cómo va mi pedido?", "estado_pedido"),
+    ("quería saber el estado de mi orden", "estado_pedido"),
+    ("cuándo estará lista mi argolla", "estado_pedido"),
+    ("¿Mi anillo ya está?", "estado_pedido"),
+    ("mi encargo ya llegó?", "estado_pedido"),
+    ("¿Puedo retirar hoy mi pedido?", "estado_pedido"),
+    ("Hice una orden la semana pasada, ¿hay novedades?", "estado_pedido"),
+    ("cuando me entregan mi cadena", "estado_pedido"),
+    # asesor (8)
+    ("Quiero hablar con un asesor", "asesor"),
+    ("¿Me puede comunicar con una persona?", "asesor"),
+    ("necesito atención de un humano", "asesor"),
+    ("Pásame con el vendedor, por favor", "asesor"),
+    ("quiero que me llamen para ver un diseño personalizado", "asesor"),
+    ("¿Hay alguien que me pueda atender en persona?", "asesor"),
+    ("No me sirve el bot, quiero a alguien real", "asesor"),
+    ("Necesito hablar con la encargada", "asesor"),
+    # despedida (5)
+    ("Muchas gracias", "despedida"),
+    ("Gracias, hasta luego", "despedida"),
+    ("listo, eso es todo, adiós", "despedida"),
+    ("chao, buen día", "despedida"),
+    ("ok gracias por la ayuda", "despedida"),
+    # otro (6)
+    ("¿Cuál es el horario de atención?", "otro"),
+    ("¿Dónde están ubicados?", "otro"),
+    ("¿Aceptan tarjeta de crédito?", "otro"),
+    ("asdfgh", "otro"),
+    ("¿Hacen reparaciones de relojes?", "otro"),
+    ("qué tiempo hace hoy", "otro"),
+]
