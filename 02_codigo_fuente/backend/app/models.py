@@ -3,7 +3,7 @@ from decimal import Decimal
 
 from sqlalchemy import (
     JSON, Boolean, CheckConstraint, Date, DateTime, ForeignKey, Index,
-    Numeric, String, Text, UniqueConstraint, func,
+    Numeric, String, Text, UniqueConstraint, func, true,
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -126,6 +126,12 @@ class Orden(Base):
     producto_id: Mapped[int | None] = mapped_column(ForeignKey("productos.id"))
     descripcion: Mapped[str] = mapped_column(Text)
     etapa_actual: Mapped[str] = mapped_column(String(50))
+    # Cola del taller: la orden se publica al crearse y queda con el acuse pendiente
+    # hasta que el taller confirma que la recibió.
+    acuse_pendiente: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default=true()
+    )
+    publicada_en: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     creado_en: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
