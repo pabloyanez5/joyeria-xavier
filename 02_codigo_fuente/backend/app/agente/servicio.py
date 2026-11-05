@@ -22,6 +22,7 @@ class RespuestaAgente:
     cliente_id: int
     escalada: bool = False
     duplicado: bool = False
+    cliente_nuevo: bool = False
 
 
 def url_web() -> str:
@@ -157,7 +158,7 @@ def atender_mensaje(
                 None, None, conversacion.id, conversacion.cliente_id, duplicado=True
             )
 
-    cliente_id, _ = identificar_cliente(session, cache, canal, id_canal, nombre)
+    cliente_id, creado = identificar_cliente(session, cache, canal, id_canal, nombre)
     cliente = session.get(Cliente, cliente_id)
     conversacion = _conversacion_abierta(session, cliente, canal)
 
@@ -175,7 +176,9 @@ def atender_mensaje(
 
     if conversacion.estado == "escalada":
         session.commit()
-        return RespuestaAgente(None, None, conversacion.id, cliente.id, escalada=True)
+        return RespuestaAgente(
+            None, None, conversacion.id, cliente.id, escalada=True, cliente_nuevo=creado
+        )
 
     intencion = clasificar(texto, proveedor)
     if intencion == "otro" and (
@@ -200,5 +203,10 @@ def atender_mensaje(
         )
     session.commit()
     return RespuestaAgente(
-        respuesta, intencion, conversacion.id, cliente.id, escalada=escalar
+        respuesta,
+        intencion,
+        conversacion.id,
+        cliente.id,
+        escalada=escalar,
+        cliente_nuevo=creado,
     )
