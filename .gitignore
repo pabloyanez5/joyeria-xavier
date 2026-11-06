@@ -31,3 +31,6 @@ redisdata/
 .idea/
 .DS_Store
 Thumbs.db
+
+# Secretos del servidor de staging
+04_despliegue_ci_cd/nginx/.htpasswd

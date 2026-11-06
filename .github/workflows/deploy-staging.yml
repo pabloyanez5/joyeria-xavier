@@ -1,0 +1,53 @@
+name: Deploy staging
+
+# Se ejecuta cuando entra un cambio a develop (los Pull Requests ya pasaron CI para poder entrar)
+# o a mano desde la pestaña Actions.
+on:
+  push:
+    branches: [develop]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-staging
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Desplegar en el VPS
+    runs-on: ubuntu-latest
+    steps:
+      - name: Preparar conexión SSH
+        env:
+          STAGING_SSH_KEY: ${{ secrets.STAGING_SSH_KEY }}
+          STAGING_KNOWN_HOSTS: ${{ secrets.STAGING_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$STAGING_SSH_KEY" > ~/.ssh/staging
+          chmod 600 ~/.ssh/staging
+          printf '%s\n' "$STAGING_KNOWN_HOSTS" > ~/.ssh/known_hosts
+
+      - name: Actualizar el código y reconstruir los contenedores
+        env:
+          HOST: ${{ secrets.STAGING_HOST }}
+        run: |
+          ssh -i ~/.ssh/staging "deploy@$HOST" '
+            set -e
+            cd ~/joyeria-xavier
+            git fetch origin develop
+            git reset --hard origin/develop
+            cd 04_despliegue_ci_cd
+            docker compose -f docker-compose.staging.yml up -d --build
+            docker compose -f docker-compose.staging.yml restart web
+            docker image prune -f
+          '
+
+      - name: Comprobar que la API responde
+        env:
+          HOST: ${{ secrets.STAGING_HOST }}
+        run: |
+          for i in $(seq 1 15); do
+            if curl -fsS "http://$HOST/api/health"; then echo; exit 0; fi
+            sleep 4
+          done
+          echo "La API no respondió después del despliegue" >&2
+          exit 1
