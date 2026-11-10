@@ -14,6 +14,7 @@ from app.agente.servicio import atender_mensaje
 from app.cache import CacheIdentidad, get_cache
 from app.clientes import identificar_cliente
 from app.db import get_session
+from app.mensajes import texto as mensaje_de_texto
 from app.meta_envio import Enviador, enviador_desde_entorno
 
 logger = logging.getLogger("joyeria.webhook")
@@ -82,6 +83,7 @@ class Entrante:
     nombre: str | None
     texto: str | None  # None si no es un mensaje de texto (imagen, audio, etc.)
     id_externo: str | None
+    accion: str | None = None  # id del botón u opción de lista que tocó el cliente
 
 
 def extraer_mensajes(payload: dict) -> list[Entrante]:
@@ -103,10 +105,22 @@ def extraer_mensajes(payload: dict) -> list[Entrante]:
                     if not id_canal:
                         continue
                     texto = None
+                    accion = None
                     if msg.get("type") == "text":
                         texto = (msg.get("text") or {}).get("body")
+                    elif msg.get("type") == "interactive":
+                        interactivo = msg.get("interactive") or {}
+                        elegido = (
+                            interactivo.get("button_reply")
+                            or interactivo.get("list_reply")
+                            or {}
+                        )
+                        texto = elegido.get("title")
+                        accion = elegido.get("id")
                     mensajes.append(
-                        Entrante(canal, id_canal, nombres.get(id_canal), texto, msg.get("id"))
+                        Entrante(
+                            canal, id_canal, nombres.get(id_canal), texto, msg.get("id"), accion
+                        )
                     )
         else:
             for evento in entry.get("messaging", []):
@@ -117,6 +131,33 @@ def extraer_mensajes(payload: dict) -> list[Entrante]:
                         Entrante(canal, id_canal, None, mensaje.get("text"), mensaje.get("mid"))
                     )
     return mensajes
+
+
+def _enviar_respuesta(enviador: Enviador, m: Entrante, resultado) -> int:
+    """Manda cada mensaje de la respuesta, en orden. Devuelve cuántos aceptó Meta."""
+    salientes = resultado.mensajes or [mensaje_de_texto(resultado.texto)]
+    aceptados = 0
+    for saliente in salientes:
+        try:
+            if enviador.enviar_saliente(m.canal, m.id_canal, saliente):
+                aceptados += 1
+        except Exception:
+            logger.exception(
+                "No se pudo enviar un mensaje (%s) a %s %s",
+                saliente.tipo,
+                m.canal,
+                _ocultar(m.id_canal),
+            )
+            if saliente.tipo != "imagen":
+                break
+            # Si Meta no pudo traer la foto, se manda igual su descripción.
+            try:
+                if enviador.enviar_saliente(m.canal, m.id_canal, mensaje_de_texto(saliente.texto)):
+                    aceptados += 1
+            except Exception:
+                logger.exception("Tampoco se pudo enviar el texto de la foto")
+                break
+    return aceptados
 
 
 def _ocultar(id_canal: str) -> str:
@@ -164,6 +205,7 @@ def recibir_mensaje(
                     nombre=m.nombre,
                     id_externo=m.id_externo,
                     proveedor=proveedor,
+                    accion=m.accion,
                 )
                 nuevos += resultado.cliente_nuevo
                 if resultado.texto:
@@ -176,15 +218,7 @@ def recibir_mensaje(
                         resultado.texto,
                     )
                     if enviador is not None:
-                        try:
-                            if enviador.enviar(m.canal, m.id_canal, resultado.texto):
-                                enviadas += 1
-                        except Exception:
-                            logger.exception(
-                                "No se pudo enviar la respuesta a %s %s",
-                                m.canal,
-                                _ocultar(m.id_canal),
-                            )
+                        enviadas += _enviar_respuesta(enviador, m, resultado)
             else:
                 _, creado = identificar_cliente(session, cache, m.canal, m.id_canal, m.nombre)
                 nuevos += creado

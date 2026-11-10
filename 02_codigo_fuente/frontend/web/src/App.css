@@ -209,6 +209,20 @@
   font-weight: 700;
 }
 
+.foto {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  object-fit: cover;
+  border-radius: 10px;
+  background: #f4efe6;
+}
+
+.modal .foto {
+  max-height: 220px;
+  margin-bottom: 8px;
+}
+
 .desglose {
   margin: 6px 0 4px;
   padding: 0;

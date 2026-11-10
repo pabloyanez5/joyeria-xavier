@@ -5,6 +5,17 @@ import os
 import urllib.error
 import urllib.request
 
+from app.mensajes import (
+    LARGO_BOTON,
+    LARGO_CUERPO,
+    LARGO_DESCRIPCION,
+    LARGO_FILA,
+    MAX_BOTONES,
+    MAX_FILAS,
+    Saliente,
+    cortar,
+)
+
 logger = logging.getLogger("joyeria.meta")
 
 VERSION_POR_DEFECTO = "v23.0"
@@ -15,10 +26,14 @@ class ErrorMeta(Exception):
 
 
 class Enviador:
-    """Interfaz: manda un texto a un cliente por su canal."""
+    """Interfaz: manda un texto, o un mensaje con formato, a un cliente por su canal."""
 
     def enviar(self, canal: str, destinatario: str, texto: str) -> bool:
         raise NotImplementedError
+
+    def enviar_saliente(self, canal: str, destinatario: str, saliente: Saliente) -> bool:
+        """Por defecto manda la versión solo texto; cada canal puede mejorarlo."""
+        return self.enviar(canal, destinatario, saliente.plano())
 
 
 class EnviadorMeta(Enviador):
@@ -37,21 +52,79 @@ class EnviadorMeta(Enviador):
     def _url(self) -> str:
         return f"https://graph.facebook.com/{self.version}/{self.phone_number_id}/messages"
 
-    def enviar(self, canal: str, destinatario: str, texto: str) -> bool:
-        """Devuelve True si Meta aceptó el mensaje; False si el canal aún no se envía."""
-        if canal != "whatsapp":
-            logger.info("El envío por %s todavía no está implementado", canal)
-            return False
-        cuerpo = {
+    @staticmethod
+    def _cuerpo(destinatario: str, s: Saliente) -> dict:
+        base = {
             "messaging_product": "whatsapp",
             "recipient_type": "individual",
             "to": destinatario,
-            "type": "text",
-            "text": {"preview_url": True, "body": texto},
         }
+        if s.tipo == "botones" and s.botones:
+            return {
+                **base,
+                "type": "interactive",
+                "interactive": {
+                    "type": "button",
+                    "body": {"text": s.texto[:LARGO_CUERPO]},
+                    "action": {
+                        "buttons": [
+                            {
+                                "type": "reply",
+                                "reply": {"id": b.id, "title": cortar(b.titulo, LARGO_BOTON)},
+                            }
+                            for b in s.botones[:MAX_BOTONES]
+                        ]
+                    },
+                },
+            }
+        if s.tipo == "lista" and s.filas:
+            return {
+                **base,
+                "type": "interactive",
+                "interactive": {
+                    "type": "list",
+                    "body": {"text": s.texto[:LARGO_CUERPO]},
+                    "action": {
+                        "button": cortar(s.etiqueta_lista, LARGO_BOTON),
+                        "sections": [
+                            {
+                                "title": "Opciones",
+                                "rows": [
+                                    {
+                                        "id": f.id,
+                                        "title": cortar(f.titulo, LARGO_FILA),
+                                        **(
+                                            {"description": cortar(f.descripcion, LARGO_DESCRIPCION)}
+                                            if f.descripcion
+                                            else {}
+                                        ),
+                                    }
+                                    for f in s.filas[:MAX_FILAS]
+                                ],
+                            }
+                        ],
+                    },
+                },
+            }
+        if s.tipo == "imagen" and s.imagen_url:
+            return {
+                **base,
+                "type": "image",
+                "image": {"link": s.imagen_url, "caption": s.texto[:LARGO_CUERPO]},
+            }
+        return {**base, "type": "text", "text": {"preview_url": True, "body": s.texto}}
+
+    def enviar(self, canal: str, destinatario: str, texto: str) -> bool:
+        """Devuelve True si Meta aceptó el mensaje; False si el canal aún no se envía."""
+        return self.enviar_saliente(canal, destinatario, Saliente("texto", texto))
+
+    def enviar_saliente(self, canal: str, destinatario: str, saliente: Saliente) -> bool:
+        if canal != "whatsapp":
+            logger.info("El envío por %s todavía no está implementado", canal)
+            return False
         peticion = urllib.request.Request(
             self._url(),
-            data=json.dumps(cuerpo).encode("utf-8"),
+            data=json.dumps(self._cuerpo(destinatario, saliente)).encode("utf-8"),
             headers={
                 "Authorization": f"Bearer {self.token}",
                 "Content-Type": "application/json",
