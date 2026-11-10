@@ -240,6 +240,15 @@ def test_con_clave_se_crea_el_modelo_de_gemini_de_langchain(monkeypatch):
     assert creado.model.endswith("gemini-2.5-flash-lite")
 
 
+def test_el_plazo_de_espera_nunca_baja_del_minimo_de_gemini(monkeypatch):
+    monkeypatch.delenv("GEMINI_TIMEOUT", raising=False)
+    assert lc_agente._segundos_de_espera() == 15
+    monkeypatch.setenv("GEMINI_TIMEOUT", "3")
+    assert lc_agente._segundos_de_espera() == 10
+    monkeypatch.setenv("GEMINI_TIMEOUT", "abc")
+    assert lc_agente._segundos_de_espera() == 15
+
+
 # --- de punta a punta por el webhook ---
 
 class EnviadorRegistra(Enviador):

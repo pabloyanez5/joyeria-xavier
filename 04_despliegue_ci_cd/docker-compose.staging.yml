@@ -36,6 +36,9 @@ services:
   api:
     build: ../02_codigo_fuente/backend
     restart: unless-stopped
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-joyeria}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-joyeria}
       REDIS_URL: redis://redis:6379/0
