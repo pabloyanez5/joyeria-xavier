@@ -40,12 +40,67 @@ def test_arma_la_peticion_de_whatsapp(monkeypatch):
     assert capturado["timeout"] == 10
 
 
-def test_otros_canales_no_se_envian(monkeypatch):
+def test_sin_pagina_configurada_no_se_envia_por_messenger_ni_instagram(monkeypatch):
     def no_debe_llamarse(*a, **k):
         raise AssertionError("no debía llamar a Meta")
 
     monkeypatch.setattr(meta_envio.urllib.request, "urlopen", no_debe_llamarse)
     assert EnviadorMeta("tok", "1").enviar("instagram", "abc", "Hola") is False
+    assert EnviadorMeta("tok", "1").enviar("messenger", "abc", "Hola") is False
+    assert EnviadorMeta("tok", "1").enviar("telegram", "abc", "Hola") is False
+
+
+@pytest.mark.parametrize("canal", ["messenger", "instagram"])
+def test_arma_la_peticion_de_messenger_e_instagram(monkeypatch, canal):
+    capturado = {}
+
+    def falso(peticion, timeout):
+        capturado["url"] = peticion.full_url
+        capturado["cabeceras"] = dict(peticion.header_items())
+        capturado["cuerpo"] = json.loads(peticion.data)
+        return RespuestaFalsa()
+
+    monkeypatch.setattr(meta_envio.urllib.request, "urlopen", falso)
+    envio = EnviadorMeta("tok-wa", "111", "v23.0", page_id="999", page_token="tok-pag")
+    assert envio.enviar(canal, "psid-77", "Hola") is True
+    assert capturado["url"] == "https://graph.facebook.com/v23.0/999/messages"
+    assert capturado["cabeceras"]["Authorization"] == "Bearer tok-pag"
+    assert capturado["cuerpo"] == {
+        "recipient": {"id": "psid-77"},
+        "message": {"text": "Hola"},
+        "messaging_type": "RESPONSE",
+    }
+
+
+def test_instagram_corta_el_texto_al_maximo_permitido(monkeypatch):
+    capturado = {}
+
+    def falso(peticion, timeout):
+        capturado["cuerpo"] = json.loads(peticion.data)
+        return RespuestaFalsa()
+
+    monkeypatch.setattr(meta_envio.urllib.request, "urlopen", falso)
+    envio = EnviadorMeta("t", "1", page_id="9", page_token="p")
+    envio.enviar("instagram", "x", "a" * 3000)
+    assert len(capturado["cuerpo"]["message"]["text"]) == 1000
+
+
+def test_error_de_la_pagina_se_informa_como_errormeta(monkeypatch):
+    def falso(peticion, timeout):
+        raise urllib.error.HTTPError(peticion.full_url, 403, "No", {}, io.BytesIO(b'{"error":"permiso"}'))
+
+    monkeypatch.setattr(meta_envio.urllib.request, "urlopen", falso)
+    with pytest.raises(ErrorMeta, match="403"):
+        EnviadorMeta("t", "1", page_id="9", page_token="p").enviar("messenger", "x", "Hola")
+
+
+def test_el_entorno_incluye_la_pagina_si_esta_configurada(monkeypatch):
+    monkeypatch.setenv("META_ACCESS_TOKEN", "tok")
+    monkeypatch.setenv("META_PHONE_NUMBER_ID", "123")
+    monkeypatch.setenv("META_PAGE_ID", "999")
+    monkeypatch.setenv("META_PAGE_ACCESS_TOKEN", "tok-pag")
+    envio = enviador_desde_entorno()
+    assert envio.page_id == "999" and envio.page_token == "tok-pag"
 
 
 def test_error_http_de_meta_se_convierte_en_errormeta(monkeypatch):
