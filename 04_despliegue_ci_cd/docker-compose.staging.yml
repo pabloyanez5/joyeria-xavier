@@ -45,6 +45,7 @@ services:
       META_VERIFY_TOKEN: ${META_VERIFY_TOKEN:-cambia-esto}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.1-flash-lite}
+      GEMINI_MODEL_RESPALDO: ${GEMINI_MODEL_RESPALDO:-gemini-2.5-flash}
       WEB_URL: ${WEB_URL:-http://localhost}
       META_APP_SECRET: ${META_APP_SECRET:-}
       META_ACCESS_TOKEN: ${META_ACCESS_TOKEN:-}
