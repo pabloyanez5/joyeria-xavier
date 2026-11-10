@@ -67,6 +67,12 @@ herramientas, derívalo a un asesor.
 """
 
 
+AVISO_RESPUESTA_VACIA = (
+    "(Aviso interno, no lo menciones) Ya tienes lo necesario. Responde ahora al cliente en 2 o 3 "
+    "frases cortas y haz una sola pregunta para seguir conociendo lo que busca."
+)
+
+
 @dataclass
 class ResultadoAgente:
     texto: str
@@ -375,6 +381,14 @@ def responder(
                     salida = f"No se pudo completar la consulta ({type(e).__name__})."
             mensajes.append(ToolMessage(content=str(salida), tool_call_id=llamada["id"]))
 
+    if not respuesta:
+        # Gemini a veces calla después de usar una herramienta (por ejemplo, al guardar un dato).
+        # Se le pide una vez, sin herramientas, que le conteste al cliente.
+        logger.warning("El modelo no escribió respuesta tras usar herramientas; se le pide una")
+        if mensajes and isinstance(mensajes[-1], AIMessage) and not mensajes[-1].tool_calls:
+            mensajes.pop()
+        mensajes.append(HumanMessage(AVISO_RESPUESTA_VACIA))
+        respuesta = _a_texto(modelo.invoke(mensajes).content).strip()
     if not respuesta:
         raise ValueError("El modelo no produjo una respuesta de texto")
     respuesta = sanear_enlaces(respuesta, _enlaces_de(mensajes))
