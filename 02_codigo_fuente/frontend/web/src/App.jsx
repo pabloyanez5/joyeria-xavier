@@ -177,6 +177,13 @@ function Configurador({ productoId, onCerrar }) {
         {!detalle.error && !detalle.producto && <p className="estado">Cargando…</p>}
         {detalle.producto && (
           <>
+            {detalle.producto.imagen_url && (
+              <img
+                className="foto"
+                src={detalle.producto.imagen_url}
+                alt={detalle.producto.nombre}
+              />
+            )}
             <span className="categoria">{detalle.producto.categoria}</span>
             <h2>{detalle.producto.nombre}</h2>
             <p className="descripcion">{detalle.producto.descripcion}</p>
@@ -260,6 +267,14 @@ function Configurador({ productoId, onCerrar }) {
 function Tarjeta({ producto, onConfigurar }) {
   return (
     <li className="tarjeta">
+      {producto.imagen_url && (
+        <img
+          className="foto"
+          src={producto.imagen_url}
+          alt={producto.nombre}
+          loading="lazy"
+        />
+      )}
       <span className="categoria">{producto.categoria}</span>
       <h2>{producto.nombre}</h2>
       <p className="descripcion">{producto.descripcion}</p>

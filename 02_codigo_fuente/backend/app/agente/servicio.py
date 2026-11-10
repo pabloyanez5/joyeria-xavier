@@ -7,10 +7,12 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.agente import contexto as ctx
+from app.agente import menu
 from app.agente.intenciones import clasificar
 from app.agente.llm import ProveedorLLM
 from app.cache import CacheIdentidad
 from app.clientes import identificar_cliente
+from app.mensajes import Saliente
 from app.models import Cliente, Conversacion, Mensaje, TransicionConversacion
 
 
@@ -23,10 +25,17 @@ class RespuestaAgente:
     escalada: bool = False
     duplicado: bool = False
     cliente_nuevo: bool = False
+    # Versión con botones, listas o fotos; `texto` es siempre la versión solo texto.
+    mensajes: list[Saliente] | None = None
 
 
 def url_web() -> str:
     return os.getenv("WEB_URL", "http://localhost:5173").rstrip("/")
+
+
+def url_media() -> str:
+    """Base pública de las fotos. WhatsApp pide una URL accesible desde internet."""
+    return os.getenv("MEDIA_URL", "").strip().rstrip("/") or url_web()
 
 
 def enlace_catalogo(contexto: dict) -> str:
@@ -149,6 +158,7 @@ def atender_mensaje(
     nombre: str | None = None,
     id_externo: str | None = None,
     proveedor: ProveedorLLM | None = None,
+    accion: str | None = None,
 ) -> RespuestaAgente:
     if id_externo:
         previo = session.scalar(select(Mensaje).where(Mensaje.id_externo == id_externo))
@@ -180,15 +190,35 @@ def atender_mensaje(
             None, None, conversacion.id, cliente.id, escalada=True, cliente_nuevo=creado
         )
 
-    intencion = clasificar(texto, proveedor)
-    if intencion == "otro" and (
-        datos.contexto.get("categoria") or datos.contexto.get("material")
-    ):
-        # Mencionó una joya o un material sin pedir nada concreto: le mostramos el catálogo.
-        intencion = "catalogo"
-    respuesta, escalar = redactar(
-        intencion, cliente.nombre_preferido, cliente.contexto_cualificacion or {}
-    )
+    if accion:
+        # El cliente tocó un botón o una opción de una lista: no hay texto que interpretar.
+        categoria = menu.categoria_de_accion(accion)
+        if categoria:
+            cliente.contexto_cualificacion = {
+                **(cliente.contexto_cualificacion or {}),
+                "categoria": categoria,
+            }
+        mensajes, escalar = menu.responder_accion(session, accion, url_web(), url_media())
+        intencion = "menu"
+        respuesta = "\n".join(m.plano() for m in mensajes)
+    else:
+        intencion = clasificar(texto, proveedor)
+        if intencion == "otro" and (
+            datos.contexto.get("categoria") or datos.contexto.get("material")
+        ):
+            # Mencionó una joya o un material sin pedir nada concreto: le mostramos el catálogo.
+            intencion = "catalogo"
+        respuesta, escalar = redactar(
+            intencion, cliente.nombre_preferido, cliente.contexto_cualificacion or {}
+        )
+        mensajes = menu.enriquecer(
+            session,
+            intencion,
+            respuesta,
+            cliente.nombre_preferido,
+            cliente.contexto_cualificacion or {},
+            url_web(),
+        )
     session.add(
         Mensaje(conversacion_id=conversacion.id, direccion="saliente", contenido=respuesta)
     )
@@ -209,4 +239,5 @@ def atender_mensaje(
         cliente.id,
         escalada=escalar,
         cliente_nuevo=creado,
+        mensajes=mensajes,
     )

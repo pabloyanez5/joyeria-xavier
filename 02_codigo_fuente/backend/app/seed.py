@@ -17,6 +17,17 @@ TARIFAS = [
     ("plata", None, "1.60"),
 ]
 
+# Fotos provisionales por categoría (carpeta public/img de la web). Se reemplazan por las
+# fotos reales de la joyería cambiando `imagen_url` de cada producto.
+IMAGEN_CATEGORIA = {
+    "Anillos": "/img/anillos.png",
+    "Argollas": "/img/argollas.png",
+    "Cadenas": "/img/cadenas.png",
+    "Pulseras": "/img/pulseras.png",
+    "Aretes": "/img/aretes.png",
+    "Dijes": "/img/dijes.png",
+}
+
 # (nombre, categoría, descripción, peso en gramos, mano de obra USD, combinaciones que se ofrecen)
 # Precio = peso x precio por gramo del material + mano de obra. El precio de cada
 # combinación en la tabla `precios` es el respaldo si no hubiera peso o tarifa.
@@ -92,6 +103,8 @@ def cargar(session: Session) -> int:
                 producto.peso_gramos = Decimal(peso)
             if producto.mano_obra is None:
                 producto.mano_obra = Decimal(mano_obra)
+            if producto.imagen_url is None:
+                producto.imagen_url = IMAGEN_CATEGORIA.get(categoria)
             continue
         producto = Producto(
             nombre=nombre,
@@ -99,6 +112,7 @@ def cargar(session: Session) -> int:
             descripcion=descripcion,
             peso_gramos=Decimal(peso),
             mano_obra=Decimal(mano_obra),
+            imagen_url=IMAGEN_CATEGORIA.get(categoria),
         )
         session.add(producto)
         session.flush()
