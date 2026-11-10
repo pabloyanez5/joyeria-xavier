@@ -285,6 +285,10 @@ def construir_herramientas(
         """Pasa la conversación a un asesor humano. Úsala si el cliente lo pide, si está
         molesto o si necesita algo que no puedes resolver."""
         estado.escalar = True
+        # El asesor verá el motivo en la ficha de la conversación.
+        contexto = dict(cliente.contexto_cualificacion or {})
+        contexto["motivo_escalamiento"] = (motivo or "").strip()[:200]
+        cliente.contexto_cualificacion = contexto
         return "La conversación se pasará a un asesor, que atenderá al cliente en breve."
 
     funciones = [

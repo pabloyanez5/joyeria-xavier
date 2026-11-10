@@ -189,6 +189,7 @@ def test_el_modelo_puede_derivar_a_un_asesor_y_luego_calla(session, cache, catal
     assert r.escalada and "asesor" in r.texto
     callado = _enviar(session, cache, "hola", modelo(AIMessage("no debería hablar")))
     assert callado.texto is None
+    assert _cliente(session).contexto_cualificacion["motivo_escalamiento"] == "cliente molesto"
 
 
 # --- el modelo no puede inventar enlaces ---

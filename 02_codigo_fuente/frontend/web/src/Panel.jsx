@@ -1,28 +1,8 @@
 import { useEffect, useState } from 'react'
+import Conversaciones from './Conversaciones.jsx'
+import { hora, leer } from './util.js'
 
 const FORM_VACIO = { clienteId: '', productoId: '', descripcion: '' }
-
-const formatoHora = new Intl.DateTimeFormat('es-EC', {
-  dateStyle: 'short',
-  timeStyle: 'medium',
-})
-
-function hora(valor) {
-  return valor ? formatoHora.format(new Date(valor)) : '—'
-}
-
-async function leer(respuesta) {
-  if (respuesta.ok) return respuesta.json()
-  let detalle = `Error ${respuesta.status}`
-  try {
-    const cuerpo = await respuesta.json()
-    if (typeof cuerpo.detail === 'string') detalle = cuerpo.detail
-    else if (Array.isArray(cuerpo.detail)) detalle = 'Revisa los datos del formulario'
-  } catch {
-    // se deja el mensaje genérico
-  }
-  throw new Error(detalle)
-}
 
 export default function Panel() {
   const [clientes, setClientes] = useState([])
@@ -33,6 +13,7 @@ export default function Panel() {
   const [form, setForm] = useState(FORM_VACIO)
   const [aviso, setAviso] = useState(null)
   const [enviando, setEnviando] = useState(false)
+  const [vista, setVista] = useState('conversaciones')
 
   useEffect(() => {
     Promise.all([
@@ -77,6 +58,12 @@ export default function Panel() {
     }
   }
 
+  function crearDesdeConversacion(datos) {
+    setForm(datos)
+    setAviso({ tipo: 'ok', texto: 'Datos precargados desde la conversación. Revísalos y crea la orden.' })
+    setVista('ordenes')
+  }
+
   async function darAcuse(id) {
     try {
       await fetch(`/api/ordenes/${id}/acuse`, { method: 'POST' }).then(leer)
@@ -92,9 +79,26 @@ export default function Panel() {
     <main className="pagina">
       <header className="encabezado">
         <h1>Panel del asesor</h1>
-        <p>Órdenes de producción · Joyería Xavier</p>
+        <p>Conversaciones y órdenes de producción · Joyería Xavier</p>
       </header>
 
+      <nav className="pestanas" aria-label="Secciones del panel">
+        <button
+          type="button"
+          className={vista === 'conversaciones' ? 'activa' : ''}
+          onClick={() => setVista('conversaciones')}
+        >
+          Conversaciones
+        </button>
+        <button type="button" className={vista === 'ordenes' ? 'activa' : ''} onClick={() => setVista('ordenes')}>
+          Órdenes
+        </button>
+      </nav>
+
+      {vista === 'conversaciones' && <Conversaciones onCrearOrden={crearDesdeConversacion} />}
+
+      {vista === 'ordenes' && (
+        <>
       {errorCarga && <p className="estado error">{errorCarga}</p>}
 
       <form className="filtros orden-form" onSubmit={crear}>
@@ -190,6 +194,8 @@ export default function Panel() {
           </table>
         )}
       </section>
+        </>
+      )}
     </main>
   )
 }
