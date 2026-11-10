@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import Conversaciones from './Conversaciones.jsx'
+import Resumen from './Resumen.jsx'
 import Tablero from './Tablero.jsx'
 import { leer } from './util.js'
 
@@ -82,7 +83,12 @@ export default function Panel() {
         <button type="button" className={vista === 'ordenes' ? 'activa' : ''} onClick={() => setVista('ordenes')}>
           Órdenes
         </button>
+        <button type="button" className={vista === 'resumen' ? 'activa' : ''} onClick={() => setVista('resumen')}>
+          Resumen
+        </button>
       </nav>
+
+      {vista === 'resumen' && <Resumen />}
 
       {vista === 'conversaciones' && <Conversaciones onCrearOrden={crearDesdeConversacion} />}
 
