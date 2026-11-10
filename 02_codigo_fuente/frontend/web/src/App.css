@@ -804,3 +804,131 @@ a.boton {
     grid-template-columns: 1fr;
   }
 }
+
+/* ---- Resumen del negocio (RF-06) ---- */
+
+.periodos {
+  display: inline-flex;
+  gap: 4px;
+  margin-left: 12px;
+}
+
+.periodos button {
+  margin-left: 0;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 0.78rem;
+}
+
+.periodos button.activa {
+  background: var(--oro-oscuro);
+  border-color: var(--oro-oscuro);
+  color: #fff;
+}
+
+.datos {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.dato {
+  background: var(--tarjeta);
+  border: 1px solid var(--linea);
+  border-radius: 12px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.dato-titulo {
+  color: var(--suave);
+  font-size: 0.8rem;
+}
+
+.dato-valor {
+  font-size: 1.9rem;
+  line-height: 1.2;
+}
+
+.dato small {
+  color: var(--suave);
+}
+
+.paneles {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.panel-tarjeta {
+  background: var(--tarjeta);
+  border: 1px solid var(--linea);
+  border-radius: 12px;
+  padding: 14px 16px;
+}
+
+.panel-tarjeta h3 {
+  margin: 0 0 10px;
+  font-size: 0.95rem;
+}
+
+.barras {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 0.82rem;
+}
+
+.barras li {
+  display: grid;
+  grid-template-columns: 96px 1fr 28px;
+  align-items: center;
+  gap: 8px;
+}
+
+.barra-pista {
+  background: #f1ece2;
+  border-radius: 6px;
+  height: 12px;
+  overflow: hidden;
+}
+
+.barra-relleno {
+  display: block;
+  height: 100%;
+  background: var(--oro);
+  border-radius: 6px;
+}
+
+.barra-relleno.produccion {
+  background: #5b8fc9;
+}
+
+.barra-relleno.mensajes {
+  background: #4a9a5b;
+}
+
+.barra-valor {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 900px) {
+  .datos,
+  .paneles {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 560px) {
+  .datos,
+  .paneles {
+    grid-template-columns: 1fr;
+  }
+}
