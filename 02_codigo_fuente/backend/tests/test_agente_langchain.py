@@ -191,6 +191,34 @@ def test_el_modelo_puede_derivar_a_un_asesor_y_luego_calla(session, cache, catal
     assert callado.texto is None
 
 
+# --- el modelo no puede inventar enlaces ---
+
+def test_un_enlace_inventado_se_cambia_por_el_de_la_herramienta(session, cache, catalogo):
+    m = modelo(
+        llamada("consultar_catalogo", categoria="Argollas"),
+        AIMessage("Mira nuestras argollas: https://joyeriaxavier.com/catalogo/argollas. ¿Algo más?"),
+    )
+    r = _enviar(session, cache, "argollas", m)
+    assert "joyeriaxavier.com" not in r.texto
+    assert f"{WEB}/?categoria=Argollas. ¿Algo más?" in r.texto
+
+
+def test_un_enlace_inventado_sin_herramienta_apunta_a_la_web(session, cache, catalogo):
+    m = modelo(AIMessage("Visita joyeriaxavier.com/catalogo o www.otra.com, gracias."))
+    r = _enviar(session, cache, "dónde las veo?", m)
+    assert r.texto == f"Visita {WEB} o {WEB}, gracias."
+
+
+def test_el_enlace_correcto_no_se_toca():
+    texto = f"Entra a {WEB}/?categoria=Anillos y cotiza."
+    assert lc_agente.sanear_enlaces(texto, [f"{WEB}/?categoria=Anillos"]) == texto
+
+
+def test_los_decimales_y_las_frases_no_se_confunden_con_enlaces():
+    texto = "El anillo cuesta $84.40 aprox. y pesa 4.5 gramos. Dime cuál te gusta."
+    assert lc_agente.sanear_enlaces(texto, []) == texto
+
+
 # --- robustez ---
 
 def test_si_el_modelo_falla_responde_el_motor_de_reglas(session, cache, catalogo):
