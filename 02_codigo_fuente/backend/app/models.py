@@ -92,6 +92,8 @@ class Mensaje(Base):
     direccion: Mapped[str] = mapped_column(String(10))
     contenido: Mapped[str] = mapped_column(Text)
     id_externo: Mapped[str | None] = mapped_column(String(200), unique=True)
+    # Quién escribió un mensaje saliente: None = el agente; "asesor" = una persona desde el panel.
+    autor: Mapped[str | None] = mapped_column(String(20))
     creado_en: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
