@@ -14,6 +14,7 @@ Si el modelo falla, el servicio vuelve al motor de reglas.
 import logging
 import os
 import re
+from functools import lru_cache
 from dataclasses import dataclass, field
 from decimal import Decimal
 from urllib.parse import urlencode
@@ -98,19 +99,14 @@ def _segundos_de_espera() -> float:
         return 15.0
 
 
-def crear_modelo_desde_entorno() -> BaseChatModel | None:
-    """Gemini a través de LangChain si hay GEMINI_API_KEY; si no, None (se usan reglas)."""
-    clave = os.getenv("GEMINI_API_KEY", "").strip()
-    if not clave:
-        return None
+def _crear_modelo(clave: str, nombre: str) -> BaseChatModel:
     from langchain_google_genai import ChatGoogleGenerativeAI
 
-    modelo = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite")
     opciones = {}
-    if "2.5" in modelo and "pro" not in modelo:
+    if "2.5" in nombre and "pro" not in nombre:
         opciones["thinking_budget"] = 0  # respuesta corta y rápida para un chat
     return ChatGoogleGenerativeAI(
-        model=modelo,
+        model=nombre,
         api_key=clave,
         temperature=0.3,
         max_tokens=600,
@@ -118,6 +114,35 @@ def crear_modelo_desde_entorno() -> BaseChatModel | None:
         retries=1,
         **opciones,
     )
+
+
+def crear_modelo_desde_entorno() -> BaseChatModel | None:
+    """Gemini a través de LangChain si hay GEMINI_API_KEY; si no, None (se usan reglas)."""
+    clave = os.getenv("GEMINI_API_KEY", "").strip()
+    if not clave:
+        return None
+    return _crear_modelo(clave, os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite"))
+
+
+MODELO_DE_RESPALDO = "gemini-2.5-flash"
+
+
+@lru_cache
+def _modelo_de_respaldo(clave: str, nombre: str) -> BaseChatModel:
+    return _crear_modelo(clave, nombre)
+
+
+def respaldo_desde_entorno() -> BaseChatModel | None:
+    """Segundo modelo para cuando el principal está saturado (503) o no responde a tiempo (504).
+
+    GEMINI_MODEL_RESPALDO lo cambia; con el valor "ninguno" se desactiva.
+    """
+    clave = os.getenv("GEMINI_API_KEY", "").strip()
+    nombre = os.getenv("GEMINI_MODEL_RESPALDO", "").strip() or MODELO_DE_RESPALDO
+    principal = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite")
+    if not clave or nombre.lower() == "ninguno" or nombre == principal:
+        return None
+    return _modelo_de_respaldo(clave, nombre)
 
 
 _ENLACE = re.compile(
@@ -351,6 +376,12 @@ def responder(
     herramientas = construir_herramientas(session, cliente, estado)
     por_nombre = {h.name: h for h in herramientas}
     con_herramientas = modelo.bind_tools(herramientas)
+    sin_herramientas = modelo
+    respaldo = respaldo_desde_entorno()
+    if respaldo is not None:
+        # Si el modelo principal falla (503 saturado, 504 sin tiempo), contesta el de respaldo.
+        con_herramientas = con_herramientas.with_fallbacks([respaldo.bind_tools(herramientas)])
+        sin_herramientas = modelo.with_fallbacks([respaldo])
 
     sistema = INSTRUCCIONES
     if cliente.nombre_preferido:
@@ -388,7 +419,7 @@ def responder(
         if mensajes and isinstance(mensajes[-1], AIMessage) and not mensajes[-1].tool_calls:
             mensajes.pop()
         mensajes.append(HumanMessage(AVISO_RESPUESTA_VACIA))
-        respuesta = _a_texto(modelo.invoke(mensajes).content).strip()
+        respuesta = _a_texto(sin_herramientas.invoke(mensajes).content).strip()
     if not respuesta:
         raise ValueError("El modelo no produjo una respuesta de texto")
     respuesta = sanear_enlaces(respuesta, _enlaces_de(mensajes))
