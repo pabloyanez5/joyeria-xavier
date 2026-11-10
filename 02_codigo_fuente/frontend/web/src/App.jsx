@@ -230,6 +230,16 @@ function Configurador({ productoId, onCerrar }) {
                     <span className="precio-grande">
                       {dinero(cotizacion.datos.precio)}
                     </span>
+                    {cotizacion.datos.metodo === 'formula' && (
+                      <ul className="desglose" aria-label="Cómo se calcula el precio">
+                        <li>
+                          Material: {Number(cotizacion.datos.peso_gramos)} g ×{' '}
+                          {dinero(cotizacion.datos.precio_gramo)}/g ={' '}
+                          {dinero(cotizacion.datos.costo_material)}
+                        </li>
+                        <li>Mano de obra: {dinero(cotizacion.datos.mano_obra)}</li>
+                      </ul>
+                    )}
                     <span className="nota">
                       Precio referencial · respondió en {cotizacion.ms} ms
                     </span>

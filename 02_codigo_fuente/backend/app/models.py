@@ -105,6 +105,22 @@ class Producto(Base):
     categoria: Mapped[str] = mapped_column(String(100))
     descripcion: Mapped[str | None] = mapped_column(Text)
     activo: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Insumos de la cotización por fórmula: peso de la pieza y mano de obra del taller.
+    peso_gramos: Mapped[Decimal | None] = mapped_column(Numeric(7, 2))
+    mano_obra: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
+    imagen_url: Mapped[str | None] = mapped_column(String(500))
+
+
+class TarifaMaterial(Base):
+    """Precio por gramo de un material (y quilataje), con historial por fecha de vigencia."""
+
+    __tablename__ = "tarifas_material"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    material: Mapped[str] = mapped_column(String(50))
+    quilataje: Mapped[str | None] = mapped_column(String(10))
+    precio_gramo: Mapped[Decimal] = mapped_column(Numeric(10, 2))
+    vigente_desde: Mapped[date] = mapped_column(Date)
 
 
 class Precio(Base):

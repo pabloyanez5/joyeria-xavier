@@ -209,6 +209,14 @@
   font-weight: 700;
 }
 
+.desglose {
+  margin: 6px 0 4px;
+  padding: 0;
+  list-style: none;
+  font-size: 0.9rem;
+  color: var(--suave);
+}
+
 .nota {
   font-size: 0.8rem;
   color: var(--suave);
