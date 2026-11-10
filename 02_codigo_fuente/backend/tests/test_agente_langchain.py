@@ -305,3 +305,27 @@ def test_el_webhook_usa_el_agente_langchain_y_envia_su_respuesta(session, cache,
         app.dependency_overrides.clear()
     assert r.json()["enviadas"] == 1
     assert falso.salientes[0].texto == "¡Hola! ¿Qué joya buscas?"
+
+
+def test_calentar_el_modelo_hace_una_llamada_minima():
+    from app.agente.lc_agente import calentar_modelo
+
+    m = modelo(AIMessage("ok"))
+    assert calentar_modelo(m) is True
+    assert len(m.recibidos) == 1
+
+
+def test_calentar_el_modelo_no_rompe_si_falla_o_no_hay_modelo():
+    from app.agente.lc_agente import calentar_modelo
+
+    assert calentar_modelo(modelo(falla=True)) is False
+    assert calentar_modelo(None) is False
+
+
+def test_el_servidor_arranca_aunque_no_haya_modelo():
+    from fastapi.testclient import TestClient
+
+    from app.main import app
+
+    with TestClient(app) as cliente:  # ejecuta el arranque, que intenta calentar el agente
+        assert cliente.get("/health").json() == {"status": "ok"}
