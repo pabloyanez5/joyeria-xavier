@@ -1,13 +1,13 @@
 import { useEffect, useState } from 'react'
 import Conversaciones from './Conversaciones.jsx'
-import { hora, leer } from './util.js'
+import Tablero from './Tablero.jsx'
+import { leer } from './util.js'
 
 const FORM_VACIO = { clienteId: '', productoId: '', descripcion: '' }
 
 export default function Panel() {
   const [clientes, setClientes] = useState([])
   const [productos, setProductos] = useState([])
-  const [cola, setCola] = useState([])
   const [errorCarga, setErrorCarga] = useState(null)
   const [version, setVersion] = useState(0)
   const [form, setForm] = useState(FORM_VACIO)
@@ -19,12 +19,10 @@ export default function Panel() {
     Promise.all([
       fetch('/api/clientes').then(leer),
       fetch('/api/productos').then(leer),
-      fetch('/api/ordenes/cola').then(leer),
     ])
-      .then(([c, p, o]) => {
+      .then(([c, p]) => {
         setClientes(c)
         setProductos(p)
-        setCola(o)
         setErrorCarga(null)
       })
       .catch((e) => setErrorCarga(e.message))
@@ -62,15 +60,6 @@ export default function Panel() {
     setForm(datos)
     setAviso({ tipo: 'ok', texto: 'Datos precargados desde la conversación. Revísalos y crea la orden.' })
     setVista('ordenes')
-  }
-
-  async function darAcuse(id) {
-    try {
-      await fetch(`/api/ordenes/${id}/acuse`, { method: 'POST' }).then(leer)
-      setVersion((v) => v + 1)
-    } catch (error) {
-      setAviso({ tipo: 'error', texto: error.message })
-    }
   }
 
   const puedeCrear = form.clienteId && form.descripcion.trim().length >= 3 && !enviando
@@ -147,53 +136,7 @@ export default function Panel() {
       )}
       {aviso && <p className={`estado ${aviso.tipo === 'error' ? 'error' : 'ok'}`}>{aviso.texto}</p>}
 
-      <section aria-label="Cola del taller">
-        <h2 className="cola-titulo">
-          Cola del taller <span>({cola.length})</span>
-          <button type="button" onClick={() => setVersion((v) => v + 1)}>
-            Actualizar
-          </button>
-        </h2>
-        {cola.length === 0 ? (
-          <p className="estado">No hay órdenes en la cola.</p>
-        ) : (
-          <table className="cola">
-            <thead>
-              <tr>
-                <th>Orden</th>
-                <th>Cliente</th>
-                <th>Joya</th>
-                <th>Detalle</th>
-                <th>Publicada</th>
-                <th>Acuse</th>
-              </tr>
-            </thead>
-            <tbody>
-              {cola.map((o) => (
-                <tr key={o.id}>
-                  <td>{o.codigo}</td>
-                  <td>{o.cliente}</td>
-                  <td>{o.producto ?? 'A medida'}</td>
-                  <td>{o.descripcion}</td>
-                  <td>{hora(o.publicada_en)}</td>
-                  <td>
-                    {o.acuse_pendiente ? (
-                      <>
-                        <span className="insignia pendiente">Acuse pendiente</span>
-                        <button type="button" onClick={() => darAcuse(o.id)}>
-                          Simular acuse del taller
-                        </button>
-                      </>
-                    ) : (
-                      <span className="insignia recibida">Recibida por el taller</span>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </section>
+      <Tablero version={version} />
         </>
       )}
     </main>

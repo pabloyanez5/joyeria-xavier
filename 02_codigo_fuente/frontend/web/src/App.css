@@ -701,3 +701,106 @@ a.boton {
   }
 }
 
+
+/* ---- Tablero del taller ---- */
+
+.tablero-avisar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  font-size: 0.8rem;
+  font-weight: 400;
+  color: var(--suave);
+}
+
+.tablero-avisar + button {
+  margin-left: 0;
+}
+
+.tablero {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  align-items: start;
+}
+
+.tablero-col {
+  background: #f7f3ec;
+  border: 1px solid var(--linea);
+  border-radius: 12px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 120px;
+}
+
+.tablero-col h3 {
+  margin: 0;
+  font-size: 0.9rem;
+  display: flex;
+  justify-content: space-between;
+}
+
+.tablero-col h3 span {
+  color: var(--suave);
+  font-weight: 400;
+}
+
+.tablero-vacio {
+  margin: 0;
+  color: var(--suave);
+  font-size: 0.8rem;
+}
+
+.tarjeta-orden {
+  background: var(--tarjeta);
+  border: 1px solid var(--linea);
+  border-radius: 10px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.85rem;
+}
+
+.tarjeta-orden p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.tarjeta-orden small,
+.tarjeta-cliente {
+  color: var(--suave);
+}
+
+.tarjeta-orden button {
+  margin-top: 4px;
+  padding: 4px 8px;
+  font-size: 0.75rem;
+}
+
+.tablero-col.en_produccion {
+  border-top: 3px solid #d9a441;
+}
+
+.tablero-col.terminada {
+  border-top: 3px solid #5b8fc9;
+}
+
+.tablero-col.entregada {
+  border-top: 3px solid #4a9a5b;
+}
+
+@media (max-width: 900px) {
+  .tablero {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 560px) {
+  .tablero {
+    grid-template-columns: 1fr;
+  }
+}
