@@ -2,6 +2,7 @@
 import json
 import logging
 import os
+import time
 import urllib.error
 import urllib.request
 
@@ -43,7 +44,11 @@ class EnviadorMeta(Enviador):
         phone_number_id: str,
         version: str = VERSION_POR_DEFECTO,
         timeout: float = 10,
+        intentos: int = 3,
+        espera: float = 0.7,
     ):
+        self.intentos = max(1, intentos)
+        self.espera = espera
         self.token = token
         self.phone_number_id = phone_number_id
         self.version = version
@@ -131,15 +136,23 @@ class EnviadorMeta(Enviador):
             },
             method="POST",
         )
-        try:
-            with urllib.request.urlopen(peticion, timeout=self.timeout) as respuesta:
-                respuesta.read()
-        except urllib.error.HTTPError as e:
-            detalle = e.read(500).decode("utf-8", "replace")
-            raise ErrorMeta(f"Meta respondió {e.code}: {detalle}") from e
-        except (urllib.error.URLError, TimeoutError) as e:
-            raise ErrorMeta(f"No se pudo contactar a Meta: {e}") from e
-        return True
+        for intento in range(1, self.intentos + 1):
+            try:
+                with urllib.request.urlopen(peticion, timeout=self.timeout) as respuesta:
+                    respuesta.read()
+                return True
+            except urllib.error.HTTPError as e:
+                # Meta sí respondió (token vencido, parámetros inválidos): reintentar no ayuda.
+                detalle = e.read(500).decode("utf-8", "replace")
+                raise ErrorMeta(f"Meta respondió {e.code}: {detalle}") from e
+            except (urllib.error.URLError, TimeoutError) as e:
+                # Corte de red o DNS intermitente: se reintenta con una pausa corta.
+                if intento == self.intentos:
+                    raise ErrorMeta(f"No se pudo contactar a Meta: {e}") from e
+                logger.warning(
+                    "Sin red hacia Meta (intento %d de %d): %s", intento, self.intentos, e
+                )
+                time.sleep(self.espera * intento)
 
 
 def enviador_desde_entorno() -> Enviador | None:

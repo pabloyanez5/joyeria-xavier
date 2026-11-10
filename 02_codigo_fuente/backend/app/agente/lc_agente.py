@@ -73,6 +73,14 @@ class _Estado:
         self.herramientas: list[str] = []
 
 
+def _segundos_de_espera() -> float:
+    """Gemini rechaza plazos menores a 10 s; por defecto 15 s (configurable con GEMINI_TIMEOUT)."""
+    try:
+        return max(10.0, float(os.getenv("GEMINI_TIMEOUT", "15")))
+    except ValueError:
+        return 15.0
+
+
 def crear_modelo_desde_entorno() -> BaseChatModel | None:
     """Gemini a través de LangChain si hay GEMINI_API_KEY; si no, None (se usan reglas)."""
     clave = os.getenv("GEMINI_API_KEY", "").strip()
@@ -89,7 +97,7 @@ def crear_modelo_desde_entorno() -> BaseChatModel | None:
         api_key=clave,
         temperature=0.3,
         max_tokens=600,
-        request_timeout=8,
+        request_timeout=_segundos_de_espera(),
         retries=1,
         **opciones,
     )

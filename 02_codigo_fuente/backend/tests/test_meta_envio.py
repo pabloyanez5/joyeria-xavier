@@ -68,6 +68,56 @@ def test_error_de_red_se_convierte_en_errormeta(monkeypatch):
         EnviadorMeta("tok", "1").enviar("whatsapp", "593", "Hola")
 
 
+def test_reintenta_si_la_red_falla_un_momento(monkeypatch):
+    llamadas = []
+
+    class Respuesta:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def read(self):
+            return b"{}"
+
+    def falso(peticion, timeout):
+        llamadas.append(1)
+        if len(llamadas) < 3:
+            raise urllib.error.URLError("[Errno 101] Network is unreachable")
+        return Respuesta()
+
+    monkeypatch.setattr(meta_envio.urllib.request, "urlopen", falso)
+    assert EnviadorMeta("tok", "1").enviar("whatsapp", "593", "Hola") is True
+    assert len(llamadas) == 3
+
+
+def test_se_rinde_tras_los_intentos_configurados(monkeypatch):
+    llamadas = []
+
+    def falso(peticion, timeout):
+        llamadas.append(1)
+        raise urllib.error.URLError("sin red")
+
+    monkeypatch.setattr(meta_envio.urllib.request, "urlopen", falso)
+    with pytest.raises(ErrorMeta, match="No se pudo contactar"):
+        EnviadorMeta("tok", "1", intentos=2).enviar("whatsapp", "593", "Hola")
+    assert len(llamadas) == 2
+
+
+def test_un_error_http_no_se_reintenta(monkeypatch):
+    llamadas = []
+
+    def falso(peticion, timeout):
+        llamadas.append(1)
+        raise urllib.error.HTTPError(peticion.full_url, 401, "No", {}, io.BytesIO(b"{}"))
+
+    monkeypatch.setattr(meta_envio.urllib.request, "urlopen", falso)
+    with pytest.raises(ErrorMeta, match="401"):
+        EnviadorMeta("tok", "1").enviar("whatsapp", "593", "Hola")
+    assert len(llamadas) == 1
+
+
 def test_el_token_no_aparece_en_el_mensaje_de_error(monkeypatch):
     def falso(peticion, timeout):
         raise urllib.error.HTTPError(peticion.full_url, 401, "No", {}, io.BytesIO(b"{}"))
