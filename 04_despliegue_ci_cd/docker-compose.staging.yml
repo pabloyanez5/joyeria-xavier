@@ -43,7 +43,6 @@ services:
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.1-flash-lite}
       WEB_URL: ${WEB_URL:-http://localhost}
-      META_VERIFY_TOKEN: ${META_VERIFY_TOKEN:-cambia-esto}
       META_APP_SECRET: ${META_APP_SECRET:-}
       META_ACCESS_TOKEN: ${META_ACCESS_TOKEN:-}
       META_PHONE_NUMBER_ID: ${META_PHONE_NUMBER_ID:-}
