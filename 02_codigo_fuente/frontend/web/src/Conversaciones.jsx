@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { hora, leer } from './util.js'
 
 const ETIQUETA_ESTADO = { activa: 'Atiende el agente', escalada: 'Espera a un asesor', cerrada: 'Cerrada' }
-const AUTOR = { cliente: 'Cliente', agente: 'Agente', asesor: 'Asesor' }
+const AUTOR = { cliente: 'Cliente', agente: 'Agente', asesor: 'Asesor', sistema: 'Sistema' }
 const ACTUALIZAR_CADA_MS = 8000
 
 function Estado({ valor }) {
