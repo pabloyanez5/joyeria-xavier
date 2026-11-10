@@ -9,7 +9,7 @@ from fastapi.responses import PlainTextResponse
 from sqlalchemy.orm import Session
 
 from app.agente.llm import ProveedorLLM
-from app.agente.rutas import get_proveedor
+from app.agente.rutas import get_modelo_chat, get_proveedor
 from app.agente.servicio import atender_mensaje
 from app.cache import CacheIdentidad, get_cache
 from app.clientes import identificar_cliente
@@ -183,6 +183,7 @@ def recibir_mensaje(
     cache: CacheIdentidad = Depends(get_cache),
     proveedor: ProveedorLLM | None = Depends(get_proveedor),
     enviador: Enviador | None = Depends(get_enviador),
+    modelo=Depends(get_modelo_chat),
 ):
     """Recibe los mensajes de Meta, deja que el agente los atienda y responde al cliente.
 
@@ -206,6 +207,7 @@ def recibir_mensaje(
                     id_externo=m.id_externo,
                     proveedor=proveedor,
                     accion=m.accion,
+                    modelo=modelo,
                 )
                 nuevos += resultado.cliente_nuevo
                 if resultado.texto:

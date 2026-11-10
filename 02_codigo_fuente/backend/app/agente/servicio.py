@@ -1,4 +1,5 @@
 """Atiende un mensaje entrante: guarda la conversación y arma la respuesta."""
+import logging
 import os
 from dataclasses import dataclass
 from urllib.parse import urlencode
@@ -14,6 +15,8 @@ from app.cache import CacheIdentidad
 from app.clientes import identificar_cliente
 from app.mensajes import Saliente
 from app.models import Cliente, Conversacion, Mensaje, TransicionConversacion
+
+logger = logging.getLogger("joyeria.agente")
 
 
 @dataclass
@@ -159,7 +162,9 @@ def atender_mensaje(
     id_externo: str | None = None,
     proveedor: ProveedorLLM | None = None,
     accion: str | None = None,
+    modelo=None,
 ) -> RespuestaAgente:
+    """`modelo` es el modelo de chat de LangChain; si falta o falla, responde el motor de reglas."""
     if id_externo:
         previo = session.scalar(select(Mensaje).where(Mensaje.id_externo == id_externo))
         if previo is not None:
@@ -172,14 +177,13 @@ def atender_mensaje(
     cliente = session.get(Cliente, cliente_id)
     conversacion = _conversacion_abierta(session, cliente, canal)
 
-    session.add(
-        Mensaje(
-            conversacion_id=conversacion.id,
-            direccion="entrante",
-            contenido=texto,
-            id_externo=id_externo,
-        )
+    entrante = Mensaje(
+        conversacion_id=conversacion.id,
+        direccion="entrante",
+        contenido=texto,
+        id_externo=id_externo,
     )
+    session.add(entrante)
     datos = ctx.extraer(texto)
     _recordar(cliente, datos)
     conversacion.actualizado_en = func.now()
@@ -202,23 +206,39 @@ def atender_mensaje(
         intencion = "menu"
         respuesta = "\n".join(m.plano() for m in mensajes)
     else:
-        intencion = clasificar(texto, proveedor)
-        if intencion == "otro" and (
-            datos.contexto.get("categoria") or datos.contexto.get("material")
-        ):
-            # Mencionó una joya o un material sin pedir nada concreto: le mostramos el catálogo.
-            intencion = "catalogo"
-        respuesta, escalar = redactar(
-            intencion, cliente.nombre_preferido, cliente.contexto_cualificacion or {}
-        )
-        mensajes = menu.enriquecer(
-            session,
-            intencion,
-            respuesta,
-            cliente.nombre_preferido,
-            cliente.contexto_cualificacion or {},
-            url_web(),
-        )
+        resultado_lc = None
+        if modelo is not None:
+            try:
+                from app.agente import lc_agente
+
+                session.flush()  # para conocer el id del mensaje y no repetirlo en el historial
+                resultado_lc = lc_agente.responder(
+                    session, modelo, cliente, conversacion.id, texto, entrante.id
+                )
+            except Exception:
+                logger.exception("El agente LangChain falló; se responde con el motor de reglas")
+        if resultado_lc is not None:
+            intencion = resultado_lc.herramientas[0] if resultado_lc.herramientas else "conversacion"
+            respuesta, escalar = resultado_lc.texto, resultado_lc.escalar
+            mensajes = resultado_lc.mensajes
+        else:
+            intencion = clasificar(texto, proveedor)
+            if intencion == "otro" and (
+                datos.contexto.get("categoria") or datos.contexto.get("material")
+            ):
+                # Mencionó una joya o un material sin pedir nada concreto: le mostramos el catálogo.
+                intencion = "catalogo"
+            respuesta, escalar = redactar(
+                intencion, cliente.nombre_preferido, cliente.contexto_cualificacion or {}
+            )
+            mensajes = menu.enriquecer(
+                session,
+                intencion,
+                respuesta,
+                cliente.nombre_preferido,
+                cliente.contexto_cualificacion or {},
+                url_web(),
+            )
     session.add(
         Mensaje(conversacion_id=conversacion.id, direccion="saliente", contenido=respuesta)
     )
