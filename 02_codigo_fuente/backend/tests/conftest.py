@@ -37,7 +37,7 @@ def sin_modelo_real(monkeypatch):
 @pytest.fixture(autouse=True)
 def sin_credenciales_de_meta(monkeypatch):
     """Ninguna prueba debe mandar mensajes reales a Meta aunque haya variables en el entorno."""
-    for nombre in ("META_ACCESS_TOKEN", "META_PHONE_NUMBER_ID", "META_APP_SECRET"):
+    for nombre in ("META_ACCESS_TOKEN", "META_PHONE_NUMBER_ID", "META_APP_SECRET", "META_PAGE_ID", "META_PAGE_ACCESS_TOKEN"):
         monkeypatch.delenv(nombre, raising=False)
 
 

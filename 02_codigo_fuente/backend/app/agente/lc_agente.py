@@ -145,6 +145,22 @@ def respaldo_desde_entorno() -> BaseChatModel | None:
     return _modelo_de_respaldo(clave, nombre)
 
 
+def calentar_modelo(modelo: BaseChatModel | None) -> bool:
+    """Una llamada mínima para abrir la conexión con Gemini antes del primer mensaje real.
+
+    Sin esto, el primer cliente tras un reinicio paga la conexión en frío y, si pasa el plazo,
+    recibe la respuesta del motor de reglas en lugar de la del agente.
+    """
+    if modelo is None:
+        return False
+    try:
+        modelo.invoke("Responde solo: ok")
+        return True
+    except Exception:
+        logger.warning("No se pudo calentar el modelo", exc_info=True)
+        return False
+
+
 _ENLACE = re.compile(
     r"(?:https?://|www\.)[^\s<>\"']+|\b[\w-]+(?:\.[\w-]+)*\.(?:com|ec|net|org|io|co)\b(?:/[^\s<>\"']*)?",
     re.IGNORECASE,
