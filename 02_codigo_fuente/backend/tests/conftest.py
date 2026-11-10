@@ -24,3 +24,9 @@ def session():
 @pytest.fixture
 def cache():
     return CacheIdentidad(fakeredis.FakeRedis(decode_responses=True))
+
+@pytest.fixture(autouse=True)
+def sin_credenciales_de_meta(monkeypatch):
+    """Ninguna prueba debe mandar mensajes reales a Meta aunque haya variables en el entorno."""
+    for nombre in ("META_ACCESS_TOKEN", "META_PHONE_NUMBER_ID", "META_APP_SECRET"):
+        monkeypatch.delenv(nombre, raising=False)

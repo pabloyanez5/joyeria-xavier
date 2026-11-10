@@ -1,8 +1,10 @@
+import hashlib
+import hmac
 import logging
 import os
 from dataclasses import dataclass
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Query
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request
 from fastapi.responses import PlainTextResponse
 from sqlalchemy.orm import Session
 
@@ -12,6 +14,7 @@ from app.agente.servicio import atender_mensaje
 from app.cache import CacheIdentidad, get_cache
 from app.clientes import identificar_cliente
 from app.db import get_session
+from app.meta_envio import Enviador, enviador_desde_entorno
 
 logger = logging.getLogger("joyeria.webhook")
 
@@ -26,6 +29,23 @@ CANALES = {
 
 def get_verify_token() -> str:
     return os.getenv("META_VERIFY_TOKEN", "cambia-esto")
+
+
+def get_enviador() -> Enviador | None:
+    """Quien manda las respuestas a Meta; None si faltan las credenciales."""
+    return enviador_desde_entorno()
+
+
+async def verificar_firma(request: Request) -> None:
+    """Comprueba la firma X-Hub-Signature-256 de Meta si META_APP_SECRET está definido."""
+    secreto = os.getenv("META_APP_SECRET", "").strip()
+    if not secreto:
+        return
+    cuerpo = await request.body()
+    esperada = "sha256=" + hmac.new(secreto.encode(), cuerpo, hashlib.sha256).hexdigest()
+    recibida = request.headers.get("X-Hub-Signature-256", "")
+    if not hmac.compare_digest(recibida, esperada):
+        raise HTTPException(status_code=403, detail="Firma inválida")
 
 
 def extraer_remitentes(payload: dict) -> list[tuple[str, str, str | None]]:
@@ -115,21 +135,23 @@ def verificar_webhook(
     raise HTTPException(status_code=403, detail="Token de verificación inválido")
 
 
-@router.post("/meta")
+@router.post("/meta", dependencies=[Depends(verificar_firma)])
 def recibir_mensaje(
     payload: dict = Body(...),
     session: Session = Depends(get_session),
     cache: CacheIdentidad = Depends(get_cache),
     proveedor: ProveedorLLM | None = Depends(get_proveedor),
+    enviador: Enviador | None = Depends(get_enviador),
 ):
-    """Recibe los mensajes de Meta y deja que el agente los atienda.
+    """Recibe los mensajes de Meta, deja que el agente los atienda y responde al cliente.
 
-    Por ahora las respuestas se guardan y se escriben en el registro, pero no se
-    envían a Meta (falta la cuenta verificada). Siempre se responde 200 para que
-    Meta no reintente el envío si algo falla con un mensaje.
+    La respuesta se guarda, se escribe en el registro y, si hay credenciales de Meta
+    (META_ACCESS_TOKEN y META_PHONE_NUMBER_ID), se envía por WhatsApp. Siempre se
+    responde 200 para que Meta no reintente el envío si algo falla con un mensaje.
     """
     nuevos = 0
     respuestas = 0
+    enviadas = 0
     for m in extraer_mensajes(payload):
         try:
             if m.texto:
@@ -153,10 +175,25 @@ def recibir_mensaje(
                         resultado.intencion,
                         resultado.texto,
                     )
+                    if enviador is not None:
+                        try:
+                            if enviador.enviar(m.canal, m.id_canal, resultado.texto):
+                                enviadas += 1
+                        except Exception:
+                            logger.exception(
+                                "No se pudo enviar la respuesta a %s %s",
+                                m.canal,
+                                _ocultar(m.id_canal),
+                            )
             else:
                 _, creado = identificar_cliente(session, cache, m.canal, m.id_canal, m.nombre)
                 nuevos += creado
         except Exception:
             session.rollback()
             logger.exception("No se pudo atender un mensaje de %s", m.canal)
-    return {"status": "ok", "clientes_nuevos": nuevos, "respuestas": respuestas}
+    return {
+        "status": "ok",
+        "clientes_nuevos": nuevos,
+        "respuestas": respuestas,
+        "enviadas": enviadas,
+    }
