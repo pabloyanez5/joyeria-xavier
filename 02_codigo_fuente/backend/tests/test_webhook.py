@@ -120,7 +120,7 @@ def _payload_texto(texto, wamid="wamid.1", tipo="text"):
 def test_post_con_texto_lo_atiende_el_agente_y_guarda_la_conversacion(api, session, caplog):
     with caplog.at_level(logging.INFO, logger="joyeria.webhook"):
         r = api.post("/webhook/meta", json=_payload_texto("hola"))
-    assert r.json() == {"status": "ok", "clientes_nuevos": 1, "respuestas": 1}
+    assert r.json() == {"status": "ok", "clientes_nuevos": 1, "respuestas": 1, "enviadas": 0}
     assert len(session.scalars(select(Conversacion)).all()) == 1
     direcciones = [m.direccion for m in session.scalars(select(Mensaje).order_by(Mensaje.id))]
     assert direcciones == ["entrante", "saliente"]
@@ -138,7 +138,7 @@ def test_post_repetido_de_meta_no_se_responde_dos_veces(api, session):
 
 def test_post_sin_texto_solo_registra_al_cliente(api, session):
     r = api.post("/webhook/meta", json=_payload_texto("", tipo="image"))
-    assert r.json() == {"status": "ok", "clientes_nuevos": 1, "respuestas": 0}
+    assert r.json() == {"status": "ok", "clientes_nuevos": 1, "respuestas": 0, "enviadas": 0}
     assert session.scalars(select(Mensaje)).all() == []
 
 
