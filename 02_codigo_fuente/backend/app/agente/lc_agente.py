@@ -13,6 +13,7 @@ Si el modelo falla, el servicio vuelve al motor de reglas.
 """
 import logging
 import os
+import re
 from dataclasses import dataclass, field
 from decimal import Decimal
 from urllib.parse import urlencode
@@ -45,6 +46,10 @@ comandos ni palabras exactas.
 - Haz una sola pregunta a la vez para conocer lo que busca (tipo de joya, material, ocasión, \
 presupuesto, talla). Cuando el cliente te dé un dato, guárdalo con la herramienta de preferencias.
 - Nunca inventes precios, existencias, plazos ni políticas. Para datos reales usa las herramientas.
+- Cuando el cliente pregunte por precios, joyas, categorías o quiera cotizar, llama SIEMPRE primero \
+a la herramienta del catálogo y menciona uno o dos precios "desde" reales que ella devuelva.
+- Nunca escribas enlaces ni direcciones web por tu cuenta. El único enlace permitido es el que \
+entrega la herramienta del catálogo, copiado tal cual.
 - Los precios son referenciales: la cotización exacta se calcula en la plataforma web (peso de la \
 pieza por el precio del material más la mano de obra) y un asesor confirma el valor final.
 - Si quiere cotizar o ver joyas, usa la herramienta del catálogo y dirígelo a la web; si te \
@@ -101,6 +106,40 @@ def crear_modelo_desde_entorno() -> BaseChatModel | None:
         retries=1,
         **opciones,
     )
+
+
+_ENLACE = re.compile(
+    r"(?:https?://|www\.)[^\s<>\"']+|\b[\w-]+(?:\.[\w-]+)*\.(?:com|ec|net|org|io|co)\b(?:/[^\s<>\"']*)?",
+    re.IGNORECASE,
+)
+
+
+def sanear_enlaces(texto: str, permitidos: list[str]) -> str:
+    """El modelo no puede inventar enlaces: los que no sean de la web de la joyería se cambian
+    por el enlace que entregó la herramienta (o por la web a secas)."""
+    base = _url_web()
+    validos = [u.rstrip("/") for u in permitidos] + [base]
+    reemplazo = permitidos[0] if permitidos else base
+
+    def cambiar(m: re.Match) -> str:
+        url = m.group(0)
+        final = ""
+        while url and url[-1] in ".,;:!?)":  # la puntuación de la frase no es del enlace
+            final = url[-1] + final
+            url = url[:-1]
+        if any(url.rstrip("/").startswith(v) for v in validos):
+            return url + final
+        return reemplazo + final
+
+    return _ENLACE.sub(cambiar, texto)
+
+
+def _enlaces_de(mensajes: list[BaseMessage]) -> list[str]:
+    encontrados: list[str] = []
+    for m in mensajes:
+        if isinstance(m, ToolMessage):
+            encontrados += re.findall(r"https?://[^\s<>\"']+", str(m.content))
+    return [u.rstrip(".,;:!?)") for u in encontrados]
 
 
 def _url_web() -> str:
@@ -328,6 +367,7 @@ def responder(
 
     if not respuesta:
         raise ValueError("El modelo no produjo una respuesta de texto")
+    respuesta = sanear_enlaces(respuesta, _enlaces_de(mensajes))
 
     salientes = None
     if estado.lista is not None:
