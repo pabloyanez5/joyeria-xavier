@@ -377,14 +377,19 @@ def _a_texto(contenido) -> str:
     return "".join(partes)
 
 
-def _historial(session: Session, conversacion_id: int, hasta_id: int | None) -> list[BaseMessage]:
+def _historial(
+    session: Session, conversacion_id: int, hasta_id: int | None, nombre: str | None = None
+) -> list[BaseMessage]:
     consulta = select(Mensaje).where(Mensaje.conversacion_id == conversacion_id)
     if hasta_id is not None:
         consulta = consulta.where(Mensaje.id < hasta_id)
     filas = list(session.scalars(consulta.order_by(Mensaje.id.desc()).limit(MENSAJES_DE_HISTORIAL)))
     mensajes: list[BaseMessage] = []
     for m in reversed(filas):
-        mensajes.append(HumanMessage(m.contenido) if m.direccion == "entrante" else AIMessage(m.contenido))
+        if m.direccion == "entrante":
+            mensajes.append(HumanMessage(m.contenido))
+        else:  # lo que el agente dijo antes no lleva el nombre real: el modelo ve la marca
+            mensajes.append(AIMessage(seguridad.enmascarar_nombre(m.contenido, nombre)))
     return mensajes
 
 
@@ -416,10 +421,14 @@ def responder(
 
     sistema = INSTRUCCIONES
     if cliente.nombre_preferido:
-        sistema += f"\nEl cliente se llama {cliente.nombre_preferido}."
+        # El nombre real no se envía al modelo (RNF-09): él escribe la marca y el servidor la cambia.
+        sistema += (
+            "\nYa conoces el nombre del cliente. Si quieres llamarlo por su nombre, escribe "
+            f"exactamente {seguridad.MARCA_NOMBRE}; nunca escribas su nombre real."
+        )
     mensajes: list[BaseMessage] = [
         SystemMessage(sistema),
-        *_historial(session, conversacion_id, id_mensaje_actual),
+        *_historial(session, conversacion_id, id_mensaje_actual, cliente.nombre_preferido),
         HumanMessage(texto),
     ]
 
@@ -460,6 +469,7 @@ def responder(
     if protegida != respuesta:
         logger.warning("Guardrail de salida: respuesta corregida (cliente %s)", cliente.id)
         respuesta = protegida
+    respuesta = seguridad.poner_nombre(respuesta, cliente.nombre_preferido)
 
     salientes = None
     if estado.lista is not None:
