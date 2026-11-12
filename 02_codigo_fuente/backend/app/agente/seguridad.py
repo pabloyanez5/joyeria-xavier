@@ -86,3 +86,26 @@ def proteger_salida(respuesta: str, texto_de_herramientas: str = "") -> str:
         return m.group(0) if m.group(0).lower() in correos_validos else "(dato omitido)"
 
     return _TELEFONO.sub(telefono, _CORREO.sub(correo, respuesta))
+
+
+# --- el nombre del cliente no viaja al modelo (RNF-09) ---
+
+MARCA_NOMBRE = "{nombre}"
+
+
+def enmascarar_nombre(texto: str, nombre: str | None) -> str:
+    """Cambia el nombre del cliente por la marca, para no mandarlo al modelo en el historial."""
+    if not nombre or not nombre.strip():
+        return texto
+    patron = r"(?<!\w)" + re.escape(nombre.strip()) + r"(?!\w)"  # palabra completa, no un trozo
+    return re.sub(patron, MARCA_NOMBRE, texto, flags=re.IGNORECASE)
+
+
+def poner_nombre(texto: str, nombre: str | None) -> str:
+    """Cambia la marca por el nombre real; sin nombre, quita la marca y arregla la frase."""
+    if nombre and nombre.strip():
+        return texto.replace(MARCA_NOMBRE, nombre.strip())
+    limpio = re.sub(r",?\s*" + re.escape(MARCA_NOMBRE), "", texto)
+    limpio = re.sub(r"\s+([,.!?])", r"\1", limpio)
+    limpio = re.sub(r"^[\s,]+", "", limpio)
+    return re.sub(r"[ \t]{2,}", " ", limpio).strip()
