@@ -4,6 +4,7 @@ import logging
 import os
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 
 from app.mensajes import (
@@ -38,6 +39,10 @@ class Enviador:
     def enviar_saliente(self, canal: str, destinatario: str, saliente: Saliente) -> bool:
         """Por defecto manda la versión solo texto; cada canal puede mejorarlo."""
         return self.enviar(canal, destinatario, saliente.plano())
+
+    def nombre_de_perfil(self, canal: str, id_canal: str) -> str | None:
+        """Nombre público del cliente en su canal, si se puede consultar; si no, None."""
+        return None
 
 
 class EnviadorMeta(Enviador):
@@ -146,6 +151,26 @@ class EnviadorMeta(Enviador):
             return self._publicar(url, self.page_token, cuerpo)
         logger.info("El envío por %s todavía no está implementado", canal)
         return False
+
+    def nombre_de_perfil(self, canal: str, id_canal: str) -> str | None:
+        """Messenger e Instagram no mandan el nombre en el webhook: se consulta a Meta.
+
+        Es opcional y no debe frenar la respuesta: con un solo intento y poca espera,
+        cualquier falla (sin permiso, sin red) devuelve None.
+        """
+        if canal not in CANALES_DE_PAGINA or not self.page_token:
+            return None
+        url = f"https://graph.facebook.com/{self.version}/{urllib.parse.quote(id_canal)}?fields=name"
+        peticion = urllib.request.Request(
+            url, headers={"Authorization": f"Bearer {self.page_token}"}, method="GET"
+        )
+        try:
+            with urllib.request.urlopen(peticion, timeout=min(self.timeout, 3)) as respuesta:
+                nombre = json.loads(respuesta.read()).get("name")
+        except Exception as e:
+            logger.info("No se pudo consultar el nombre del perfil en %s: %s", canal, type(e).__name__)
+            return None
+        return nombre.strip()[:200] if isinstance(nombre, str) and nombre.strip() else None
 
     def _publicar(self, url: str, token: str, cuerpo: dict) -> bool:
         peticion = urllib.request.Request(

@@ -196,6 +196,10 @@ def recibir_mensaje(
     enviadas = 0
     for m in extraer_mensajes(payload):
         try:
+            if m.nombre is None and m.canal != "whatsapp" and enviador is not None:
+                # Messenger e Instagram no traen el nombre: se consulta solo la primera vez.
+                if cache.obtener(m.canal, m.id_canal) is None:
+                    m.nombre = enviador.nombre_de_perfil(m.canal, m.id_canal)
             if m.texto:
                 resultado = atender_mensaje(
                     session,

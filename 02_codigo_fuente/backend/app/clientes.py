@@ -12,6 +12,9 @@ def registrar_cliente(
         select(Cliente).where(Cliente.canal == canal, Cliente.id_canal == id_canal)
     )
     if cliente:
+        if nombre_perfil and not cliente.nombre_perfil:
+            cliente.nombre_perfil = nombre_perfil  # un cliente sin nombre lo recibe cuando llega
+            session.commit()
         return cliente, False
     cliente = Cliente(canal=canal, id_canal=id_canal, nombre_perfil=nombre_perfil)
     session.add(cliente)
