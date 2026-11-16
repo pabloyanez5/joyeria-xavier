@@ -4,7 +4,7 @@ Las opciones que el cliente toca llegan como una `accion` (por ejemplo `cat:Anil
 `prod:3`) y se resuelven aquí sin necesidad de interpretar texto libre.
 """
 from decimal import Decimal
-from urllib.parse import quote
+from urllib.parse import quote, urlencode
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -149,6 +149,12 @@ def precios_de_producto(session: Session, producto_id: int, base_web: str) -> li
     ]
 
 
+def enlace_del_catalogo(base_web: str, contexto: dict) -> str:
+    """Enlace a la web, ya filtrado por la joya y el material que el cliente mencionó."""
+    params = {k: contexto[k] for k in ("categoria", "material") if contexto.get(k)}
+    return base_web.rstrip("/") + (f"/?{urlencode(params)}" if params else "")
+
+
 def enriquecer(
     session: Session, intencion: str, respuesta: str, nombre: str | None, contexto: dict,
     base_web: str,
@@ -169,7 +175,10 @@ def enriquecer(
             cuerpo = f"Claro{coma}. ¿Qué tipo de joya quieres {accion}?"
             elegida = lista_de_categorias(session, cuerpo)
         if elegida is not None:
-            return [elegida]
+            # La lista no admite enlaces: el del catálogo va en un mensaje aparte, para que el
+            # cliente lo reciba siempre (antes solo quedaba en el panel).
+            enlace = enlace_del_catalogo(base_web, contexto)
+            return [elegida, texto(f"También puedes ver todo el catálogo y cotizar aquí: {enlace}")]
     return [texto(respuesta)]
 
 

@@ -3,6 +3,14 @@ import { hora, leer } from './util.js'
 
 const ETIQUETA_ESTADO = { activa: 'Atiende el agente', escalada: 'Espera a un asesor', cerrada: 'Cerrada' }
 const AUTOR = { cliente: 'Cliente', agente: 'Agente', asesor: 'Asesor', sistema: 'Sistema' }
+// Qué redactó la respuesta del agente (sirve para saber si contestó el modelo o un respaldo).
+const ORIGEN = {
+  modelo: 'modelo',
+  respaldo: 'modelo de respaldo',
+  reglas: 'reglas',
+  menu: 'menú',
+  guardrail: 'seguridad',
+}
 const ACTUALIZAR_CADA_MS = 8000
 
 function Estado({ valor }) {
@@ -180,7 +188,10 @@ export default function Conversaciones({ onCrearOrden }) {
                 <div className="conv-mensajes" ref={caja}>
                   {d.historial.map((m) => (
                     <p key={m.id} className={`burbuja ${m.autor}`} title={hora(m.creado_en)}>
-                      <small className="burbuja-autor">{AUTOR[m.autor]}</small>
+                      <small className="burbuja-autor">
+                        {AUTOR[m.autor]}
+                        {m.origen && ORIGEN[m.origen] ? ` · ${ORIGEN[m.origen]}` : ''}
+                      </small>
                       {m.contenido}
                     </p>
                   ))}

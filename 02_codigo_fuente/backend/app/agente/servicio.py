@@ -204,6 +204,7 @@ def atender_mensaje(
             }
         mensajes, escalar = menu.responder_accion(session, accion, url_web(), url_media())
         intencion = "menu"
+        origen = "menu"
         respuesta = "\n".join(m.plano() for m in mensajes)
     else:
         resultado_lc = None
@@ -221,7 +222,9 @@ def atender_mensaje(
             intencion = resultado_lc.herramientas[0] if resultado_lc.herramientas else "conversacion"
             respuesta, escalar = resultado_lc.texto, resultado_lc.escalar
             mensajes = resultado_lc.mensajes
+            origen = resultado_lc.origen
         else:
+            origen = "reglas"
             intencion = clasificar(texto, proveedor)
             if intencion == "otro" and (
                 datos.contexto.get("categoria") or datos.contexto.get("material")
@@ -239,8 +242,15 @@ def atender_mensaje(
                 cliente.contexto_cualificacion or {},
                 url_web(),
             )
+    # En el panel se guarda lo mismo que recibe el cliente (lista, botones y enlace incluidos).
+    enviado = "\n".join(m.plano() for m in mensajes) if mensajes else respuesta
     session.add(
-        Mensaje(conversacion_id=conversacion.id, direccion="saliente", contenido=respuesta)
+        Mensaje(
+            conversacion_id=conversacion.id,
+            direccion="saliente",
+            contenido=enviado,
+            origen=origen,
+        )
     )
     if escalar:
         conversacion.estado = "escalada"
