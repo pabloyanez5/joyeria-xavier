@@ -94,6 +94,8 @@ class Mensaje(Base):
     id_externo: Mapped[str | None] = mapped_column(String(200), unique=True)
     # Quién escribió un mensaje saliente: None = el agente; "asesor" = una persona desde el panel.
     autor: Mapped[str | None] = mapped_column(String(20))
+    # Qué redactó una respuesta del agente: modelo | respaldo | reglas | menu | guardrail.
+    origen: Mapped[str | None] = mapped_column(String(20))
     creado_en: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

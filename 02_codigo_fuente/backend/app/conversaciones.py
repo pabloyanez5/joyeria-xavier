@@ -56,6 +56,8 @@ class ConversacionResumen(BaseModel):
 class MensajeOut(BaseModel):
     id: int
     autor: str  # cliente | agente | asesor
+    # Solo en respuestas del agente: modelo | respaldo | reglas | menu | guardrail.
+    origen: str | None = None
     contenido: str
     creado_en: datetime | None
 
@@ -162,7 +164,13 @@ def _detalle(session: Session, c: Conversacion) -> ConversacionDetalle:
         ficha=ficha,
         motivo_escalamiento=motivo if c.estado == "escalada" and motivo else None,
         historial=[
-            MensajeOut(id=m.id, autor=_autor(m), contenido=m.contenido, creado_en=m.creado_en)
+            MensajeOut(
+                id=m.id,
+                autor=_autor(m),
+                origen=m.origen,
+                contenido=m.contenido,
+                creado_en=m.creado_en,
+            )
             for m in mensajes
         ],
         transiciones=[

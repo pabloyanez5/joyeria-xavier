@@ -89,6 +89,7 @@ class ResultadoAgente:
     escalar: bool = False
     herramientas: list[str] = field(default_factory=list)
     mensajes: list[Saliente] | None = None
+    origen: str = "modelo"  # modelo | respaldo | guardrail
 
 
 class _Estado:
@@ -98,6 +99,7 @@ class _Estado:
         self.escalar = False
         self.lista: Saliente | None = None
         self.herramientas: list[str] = []
+        self.origen = "modelo"  # pasa a "respaldo" si el modelo principal falla
 
 
 def _segundos_de_espera() -> float:
@@ -393,6 +395,23 @@ def _historial(
     return mensajes
 
 
+def _invocar(principal, respaldo, mensajes: list[BaseMessage], estado: _Estado):
+    """Pregunta al modelo principal; si falla (503 saturado, 504 sin tiempo), al de respaldo."""
+    try:
+        return principal.invoke(mensajes)
+    except Exception as error:
+        if respaldo is None:
+            raise
+        logger.warning(
+            "El modelo principal falló (%s); contesta el de respaldo", type(error).__name__
+        )
+        estado.origen = "respaldo"
+        try:
+            return respaldo.invoke(mensajes)
+        except Exception:
+            raise error from None  # se informa el primer error, como antes
+
+
 def responder(
     session: Session,
     modelo: BaseChatModel,
@@ -406,18 +425,17 @@ def responder(
         # Guardrail de entrada (RNF-01): el mensaje no llega al modelo.
         logger.warning("Guardrail de entrada: mensaje bloqueado (cliente %s)", cliente.id)
         return ResultadoAgente(
-            texto=seguridad.RESPUESTA_SEGURA, herramientas=["guardrail_entrada"]
+            texto=seguridad.RESPUESTA_SEGURA,
+            herramientas=["guardrail_entrada"],
+            origen="guardrail",
         )
     estado = _Estado()
     herramientas = construir_herramientas(session, cliente, estado)
     por_nombre = {h.name: h for h in herramientas}
     con_herramientas = modelo.bind_tools(herramientas)
-    sin_herramientas = modelo
     respaldo = respaldo_desde_entorno()
-    if respaldo is not None:
-        # Si el modelo principal falla (503 saturado, 504 sin tiempo), contesta el de respaldo.
-        con_herramientas = con_herramientas.with_fallbacks([respaldo.bind_tools(herramientas)])
-        sin_herramientas = modelo.with_fallbacks([respaldo])
+    # Si el modelo principal falla (503 saturado, 504 sin tiempo), contesta el de respaldo.
+    respaldo_con_herramientas = respaldo.bind_tools(herramientas) if respaldo is not None else None
 
     sistema = INSTRUCCIONES
     if cliente.nombre_preferido:
@@ -434,7 +452,7 @@ def responder(
 
     respuesta = ""
     for _ in range(MAX_RONDAS):
-        ia = con_herramientas.invoke(mensajes)
+        ia = _invocar(con_herramientas, respaldo_con_herramientas, mensajes, estado)
         mensajes.append(ia)
         if not ia.tool_calls:
             respuesta = _a_texto(ia.content).strip()
@@ -459,7 +477,7 @@ def responder(
         if mensajes and isinstance(mensajes[-1], AIMessage) and not mensajes[-1].tool_calls:
             mensajes.pop()
         mensajes.append(HumanMessage(AVISO_RESPUESTA_VACIA))
-        respuesta = _a_texto(sin_herramientas.invoke(mensajes).content).strip()
+        respuesta = _a_texto(_invocar(modelo, respaldo, mensajes, estado).content).strip()
     if not respuesta:
         raise ValueError("El modelo no produjo una respuesta de texto")
     respuesta = sanear_enlaces(respuesta, _enlaces_de(mensajes))
@@ -480,4 +498,5 @@ def responder(
         escalar=estado.escalar,
         herramientas=estado.herramientas,
         mensajes=salientes,
+        origen=estado.origen,
     )
