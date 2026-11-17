@@ -128,6 +128,38 @@ def test_una_ficha_que_ya_tenia_una_joya_repetida_se_limpia_sola():
     assert volver["activo"] == 0
 
 
+def test_un_dato_de_una_joya_repetida_va_a_la_que_tiene_datos_y_no_a_la_vacia():
+    # Segunda prueba en WhatsApp: "la cadena la quiero de plata" cayó en la Cadenas vacía y la
+    # de 800 dólares quedó aparte.
+    sucia = {
+        "intereses": [
+            {"categoria": "Aretes", "material": "oro", "presupuesto": "400 dólares"},
+            {"categoria": "Cadenas"},
+            {"categoria": "Cadenas", "presupuesto": "800 dólares"},
+        ],
+        "activo": 0,
+    }
+    limpia = intereses.anotar(sucia, categoria="Cadenas", material="plata")
+    assert intereses.lista(limpia) == [
+        {"categoria": "Aretes", "material": "oro", "presupuesto": "400 dólares"},
+        {"categoria": "Cadenas", "presupuesto": "800 dólares", "material": "plata"},
+    ]
+    assert limpia["activo"] == 1
+
+
+def test_entre_dos_joyas_de_la_misma_categoria_se_retoma_la_que_tiene_mas_datos():
+    c = {
+        "intereses": [
+            {"categoria": "Cadenas", "material": "plata"},
+            {"categoria": "Cadenas", "material": "oro", "presupuesto": "800 dólares"},
+            {"categoria": "Aretes"},
+        ],
+        "activo": 2,
+    }
+    c = intereses.anotar(c, categoria="Cadenas", talla="50 cm")
+    assert c["activo"] == 1 and intereses.lista(c)[1]["talla"] == "50 cm"
+
+
 def test_dos_joyas_con_datos_de_la_misma_categoria_no_se_juntan():
     c = intereses.anotar(None, categoria="Anillos", material="oro")
     c = intereses.anotar(c, otra_joya=True, categoria="Anillos", material="plata")
