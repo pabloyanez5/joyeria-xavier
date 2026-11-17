@@ -34,7 +34,15 @@ function joyaParaEnviar(j) {
 // crea una orden por cada una y quedan unidas en un pedido.
 export default function FormularioOrden({ clientes, productos, inicial, onCreada }) {
   const [clienteId, setClienteId] = useState(inicial?.clienteId ?? '')
-  const [contacto, setContacto] = useState(() => contactoDe(clientes, inicial?.clienteId))
+  // Lo que el asesor escribe; mientras no escriba, se usa lo que ya se sabe del cliente.
+  // Así los datos aparecen aunque la lista de clientes llegue después de abrir el formulario.
+  const [editado, setEditado] = useState({})
+  const sugerido = contactoDe(clientes, clienteId)
+  const contacto = {
+    nombre: editado.nombre ?? sugerido.nombre,
+    telefono: editado.telefono ?? sugerido.telefono,
+  }
+  const clienteEnLista = clientes.some((c) => String(c.id) === String(clienteId))
   const [joyas, setJoyas] = useState(() =>
     (inicial?.descripciones ?? ['']).map((descripcion) => ({ ...JOYA_VACIA, descripcion })),
   )
@@ -43,7 +51,7 @@ export default function FormularioOrden({ clientes, productos, inicial, onCreada
 
   function elegirCliente(e) {
     setClienteId(e.target.value)
-    setContacto(contactoDe(clientes, e.target.value))
+    setEditado({})
   }
 
   function cambiarJoya(indice, campo) {
@@ -95,6 +103,7 @@ export default function FormularioOrden({ clientes, productos, inicial, onCreada
           Cliente
           <select value={clienteId} onChange={elegirCliente} required>
             <option value="">Elige un cliente</option>
+            {clienteId && !clienteEnLista && <option value={clienteId}>Cargando cliente…</option>}
             {clientes.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.nombre} ({c.canal})
@@ -106,7 +115,7 @@ export default function FormularioOrden({ clientes, productos, inicial, onCreada
           Nombre completo
           <input
             value={contacto.nombre}
-            onChange={(e) => setContacto((c) => ({ ...c, nombre: e.target.value }))}
+            onChange={(e) => setEditado((c) => ({ ...c, nombre: e.target.value }))}
             maxLength={150}
             placeholder="Confírmalo con el cliente"
             required
@@ -117,7 +126,7 @@ export default function FormularioOrden({ clientes, productos, inicial, onCreada
           <input
             type="tel"
             value={contacto.telefono}
-            onChange={(e) => setContacto((c) => ({ ...c, telefono: e.target.value }))}
+            onChange={(e) => setEditado((c) => ({ ...c, telefono: e.target.value }))}
             maxLength={30}
             placeholder="Ej. 0991234567"
             required

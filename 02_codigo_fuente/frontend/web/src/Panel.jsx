@@ -62,6 +62,7 @@ function PanelInterno({ usuario }) {
 
   function crearDesdeConversacion(inicial) {
     setPrecarga((p) => ({ turno: p.turno + 1, inicial }))
+    setVersion((v) => v + 1) // recarga los clientes: el de la conversación puede ser nuevo
     setAviso({
       tipo: 'ok',
       texto: 'Datos precargados desde la conversación. Complétalos con el cliente y crea la orden.',
