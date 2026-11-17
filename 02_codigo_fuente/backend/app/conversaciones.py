@@ -21,7 +21,7 @@ from app.meta_envio import Enviador, ErrorMeta
 from app.models import (
     Cliente, Conversacion, Mensaje, Orden, TransicionConversacion, Usuario,
 )
-from app.ordenes import nombre_de
+from app.ordenes import codigo_de_orden, nombre_de
 from app.webhook import get_enviador
 
 # Las conversaciones y la ficha del cliente son solo para el asesor (y el rol admin).
@@ -85,6 +85,9 @@ class InteresOut(BaseModel):
     titulo: str
     datos: list[ItemFicha]
     descripcion_de_orden: str
+    # Si ya se creó la orden de esta joya: su código y etapa. Así no se ofrece crearla de nuevo.
+    orden: str | None = None
+    etapa_de_la_orden: str | None = None
 
 
 class ConversacionDetalle(ConversacionResumen):
@@ -190,11 +193,38 @@ def _resumen(session: Session, c: Conversacion) -> ConversacionResumen:
     )
 
 
-def _intereses_out(cliente: Cliente, c: Conversacion) -> list[InteresOut]:
+def _ordenes_de_los_intereses(
+    session: Session, cliente: Cliente, c: Conversacion, guardados: list[dict]
+) -> list[Orden | None]:
+    """La orden de cada joya de la ficha, o None si todavía no se crea."""
+    propias = session.scalars(
+        select(Orden).where(Orden.cliente_id == cliente.id).order_by(Orden.id)
+    ).all()
+    por_id = {o.id: o for o in propias}
+    encontradas = [por_id.get(i.get("orden_id")) for i in guardados]
+    # Órdenes creadas antes de que la ficha guardara la orden: se reconocen por la descripción
+    # que arma el panel ("Joya: Aretes; …. Origen: conversación #15 por whatsapp.").
+    usadas = {o.id for o in encontradas if o}
+    origen = f"conversación #{c.id} por".casefold()
+    for n, interes in enumerate(guardados):
+        if encontradas[n] or intereses.con_orden(interes) or not interes.get("categoria"):
+            continue
+        joya = f"joya: {interes['categoria']}".casefold()
+        for o in propias:
+            texto = o.descripcion.casefold()
+            if o.id not in usadas and origen in texto and joya in texto:
+                encontradas[n] = o
+                usadas.add(o.id)
+                break
+    return encontradas
+
+
+def _intereses_out(session: Session, cliente: Cliente, c: Conversacion) -> list[InteresOut]:
     guardados = _intereses_de(cliente)
     actual = intereses.indice_activo(cliente.contexto_cualificacion)
     if actual is None and guardados:
         actual = len(guardados) - 1
+    ordenes = _ordenes_de_los_intereses(session, cliente, c, guardados)
     return [
         InteresOut(
             numero=n + 1,
@@ -202,8 +232,10 @@ def _intereses_out(cliente: Cliente, c: Conversacion) -> list[InteresOut]:
             titulo=intereses.titulo(interes),
             datos=_items(interes),
             descripcion_de_orden=_descripcion_de_orden(c, _items(interes)),
+            orden=codigo_de_orden(orden.id) if orden else None,
+            etapa_de_la_orden=orden.etapa_actual if orden else None,
         )
-        for n, interes in enumerate(guardados)
+        for n, (interes, orden) in enumerate(zip(guardados, ordenes))
     ]
 
 
@@ -230,7 +262,7 @@ def _detalle(session: Session, c: Conversacion) -> ConversacionDetalle:
         **_resumen(session, c).model_dump(),
         ficha=ficha,
         datos_del_cliente=_datos_del_cliente(cliente, c),
-        intereses=_intereses_out(cliente, c),
+        intereses=_intereses_out(session, cliente, c),
         motivo_escalamiento=motivo if c.estado == "escalada" and motivo else None,
         historial=[
             MensajeOut(

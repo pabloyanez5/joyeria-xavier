@@ -10,6 +10,7 @@ const JOYA_VACIA = {
   entregaTaller: '',
   entregaCliente: '',
   foto: '',
+  interes: null, // número de la joya en la ficha del cliente, si viene de una conversación
 }
 const MAX_JOYAS = 8
 
@@ -27,6 +28,7 @@ function joyaParaEnviar(j) {
     fecha_entrega_cliente: j.entregaCliente,
     total: j.total,
     foto_referencia_url: j.foto.trim() || null,
+    interes: j.interes,
   }
 }
 
@@ -44,7 +46,11 @@ export default function FormularioOrden({ clientes, productos, inicial, onCreada
   }
   const clienteEnLista = clientes.some((c) => String(c.id) === String(clienteId))
   const [joyas, setJoyas] = useState(() =>
-    (inicial?.descripciones ?? ['']).map((descripcion) => ({ ...JOYA_VACIA, descripcion })),
+    (inicial?.descripciones ?? ['']).map((descripcion, n) => ({
+      ...JOYA_VACIA,
+      descripcion,
+      interes: inicial?.intereses?.[n] ?? null,
+    })),
   )
   const [error, setError] = useState(null)
   const [enviando, setEnviando] = useState(false)
@@ -52,6 +58,8 @@ export default function FormularioOrden({ clientes, productos, inicial, onCreada
   function elegirCliente(e) {
     setClienteId(e.target.value)
     setEditado({})
+    // Las joyas de la ficha eran del cliente anterior: ya no se marcan como pedidas.
+    setJoyas((lista) => lista.map((j) => ({ ...j, interes: null })))
   }
 
   function cambiarJoya(indice, campo) {

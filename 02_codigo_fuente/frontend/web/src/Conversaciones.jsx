@@ -13,6 +13,13 @@ const ORIGEN = {
   guardrail: 'seguridad',
 }
 const ACTUALIZAR_CADA_MS = 8000
+const NOMBRE_ETAPA = {
+  por_verificar: 'Por verificar',
+  en_cola: 'En cola',
+  en_produccion: 'En producción',
+  terminada: 'Terminada',
+  entregada: 'Entregada',
+}
 
 function Estado({ valor }) {
   return <span className={`insignia estado-${valor}`}>{ETIQUETA_ESTADO[valor] ?? valor}</span>
@@ -110,6 +117,8 @@ export default function Conversaciones({ onCrearOrden }) {
   }
 
   const d = detalle && detalle.id === idActual ? detalle : null
+  // Las joyas de la ficha que todavía no tienen orden (las demás ya se pidieron).
+  const sinOrden = d ? d.intereses.filter((i) => !i.orden) : []
   const totalMensajes = d ? d.historial.length : 0
 
   // Los mensajes nuevos quedan a la vista sin que el asesor tenga que desplazarse.
@@ -187,18 +196,20 @@ export default function Conversaciones({ onCrearOrden }) {
                 <section className="ficha" aria-label="Ficha de contexto">
                   <div className="ficha-cabecera">
                     <h4>Ficha de contexto</h4>
-                    {d.intereses.length > 1 && (
+                    {sinOrden.length > 1 && (
                       <button
                         type="button"
                         className="boton primario"
                         onClick={() =>
                           onCrearOrden({
                             clienteId: String(d.orden_sugerida.cliente_id),
-                            descripciones: d.intereses.map((i) => i.descripcion_de_orden),
+                            descripciones: sinOrden.map((i) => i.descripcion_de_orden),
+                            intereses: sinOrden.map((i) => i.numero),
                           })
                         }
                       >
-                        Crear un pedido con las {d.intereses.length} joyas
+                        Crear un pedido con las {sinOrden.length} joyas
+                        {sinOrden.length < d.intereses.length ? ' sin orden' : ''}
                       </button>
                     )}
                   </div>
@@ -216,17 +227,24 @@ export default function Conversaciones({ onCrearOrden }) {
                         {i.activo && d.intereses.length > 1 && (
                           <span className="insignia estado-activa">De esta se está hablando</span>
                         )}
-                        <button
-                          type="button"
-                          onClick={() =>
-                            onCrearOrden({
-                              clienteId: String(d.orden_sugerida.cliente_id),
-                              descripciones: [i.descripcion_de_orden],
-                            })
-                          }
-                        >
-                          Crear orden de esta joya
-                        </button>
+                        {i.orden ? (
+                          <span className="insignia recibida">
+                            Orden {i.orden} · {NOMBRE_ETAPA[i.etapa_de_la_orden] ?? i.etapa_de_la_orden}
+                          </span>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              onCrearOrden({
+                                clienteId: String(d.orden_sugerida.cliente_id),
+                                descripciones: [i.descripcion_de_orden],
+                                intereses: [i.numero],
+                              })
+                            }
+                          >
+                            Crear orden de esta joya
+                          </button>
+                        )}
                       </p>
                       <Datos items={i.datos} />
                     </div>
