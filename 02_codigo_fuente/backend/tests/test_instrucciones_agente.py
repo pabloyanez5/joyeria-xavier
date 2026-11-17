@@ -12,5 +12,5 @@ def test_las_instrucciones_piden_respuestas_cortas_y_una_pregunta_a_la_vez():
 
 
 def test_las_instrucciones_fijan_el_orden_de_las_preguntas():
-    orden = "tipo de joya, material, ocasión, talla y presupuesto"
+    orden = "tipo de joya, modelo que le interesa, material, ocasión, talla y presupuesto"
     assert orden in INSTRUCCIONES

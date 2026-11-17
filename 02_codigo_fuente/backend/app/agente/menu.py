@@ -214,3 +214,15 @@ def categoria_de_accion(accion: str) -> str | None:
     tipo, _, valor = accion.partition(":")
     return valor if tipo == "cat" and valor else None
 
+
+def interes_de_accion(session: Session, accion: str) -> dict | None:
+    """Lo que el cliente dejó ver al tocar: una categoría o una joya concreta (su modelo)."""
+    tipo, _, valor = accion.partition(":")
+    if tipo == "cat" and valor:
+        return {"categoria": valor}
+    if tipo in ("prod", "precios") and valor.isdigit():
+        producto = session.get(Producto, int(valor))
+        if producto is not None and producto.activo:
+            return {"categoria": producto.categoria, "modelo": producto.nombre}
+    return None
+
