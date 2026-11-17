@@ -262,9 +262,18 @@ export default function Tablero({ version, onCambio, puedeAvanzar = false, puede
                       {Number(o.peso_gramos)} g · entrega al cliente {fecha(o.fecha_entrega_cliente)}
                     </small>
                   )}
-                  {puedeVerificar && o.total !== null && (
+                  {puedeVerificar && o.total !== null && etapa !== 'cancelada' && (
                     <small>
                       Total {dinero(o.total)} · abono {dinero(o.abono ?? 0)} · saldo {dinero(o.saldo ?? 0)}
+                    </small>
+                  )}
+                  {puedeVerificar && o.total !== null && etapa === 'cancelada' && (
+                    // Cancelada no cobra saldo. Si hubo abono, el sistema no lo devuelve: lo gestiona el asesor.
+                    <small className={Number(o.abono) > 0 ? 'tarjeta-devolucion' : undefined}>
+                      Total {dinero(o.total)} ·{' '}
+                      {Number(o.abono) > 0
+                        ? `abono recibido: ${dinero(o.abono)} (revisar devolución)`
+                        : 'sin abono'}
                     </small>
                   )}
                   {etapa === 'por_verificar' && !puedeVerificar && (
