@@ -89,6 +89,9 @@ def anotar(contexto: dict | None, otra_joya: bool = False, **datos) -> dict:
         return contexto
     intereses = lista(contexto)
     indice = indice_activo(contexto)
+    if indice is not None:
+        # Primero se limpia: así un dato nuevo nunca cae en una joya vacía que estaba repetida.
+        indice = _sin_repetidas(intereses, indice)
 
     categoria = datos.get("categoria")
     if otra_joya and categoria:
@@ -105,7 +108,9 @@ def anotar(contexto: dict | None, otra_joya: bool = False, **datos) -> dict:
     if otra_joya:
         indice = None
     elif categoria:
-        mismo = next((n for n, i in enumerate(intereses) if _igual(i.get("categoria"), categoria)), None)
+        iguales = [n for n, i in enumerate(intereses) if _igual(i.get("categoria"), categoria)]
+        # Si hubiera más de una de esa categoría, se retoma la que tiene más datos.
+        mismo = max(iguales, key=lambda n: len(intereses[n])) if iguales else None
         if mismo is not None:
             indice = mismo
             datos.pop("categoria")  # se conserva como ya estaba escrita
