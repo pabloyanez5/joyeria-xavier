@@ -95,6 +95,46 @@ def test_se_puede_pedir_una_segunda_joya_de_la_misma_categoria():
     assert [i["material"] for i in intereses.lista(c)] == ["oro", "plata"]
 
 
+def test_otra_joya_de_una_categoria_recien_mencionada_no_la_repite():
+    # Lo que pasó en WhatsApp: el mensaje "también quiero una cadena" ya había abierto Cadenas
+    # y el modelo mandó además es_otra_joya; quedaban dos Cadenas, una vacía.
+    c = intereses.anotar(None, categoria="Aretes", material="oro", presupuesto="400 dólares")
+    c = intereses.anotar(c, categoria="Cadenas")
+    c = intereses.anotar(c, otra_joya=True, categoria="Cadenas", presupuesto="800 dólares")
+    assert intereses.lista(c) == [
+        {"categoria": "Aretes", "material": "oro", "presupuesto": "400 dólares"},
+        {"categoria": "Cadenas", "presupuesto": "800 dólares"},
+    ]
+    assert c["activo"] == 1
+
+
+def test_una_ficha_que_ya_tenia_una_joya_repetida_se_limpia_sola():
+    sucia = {
+        "intereses": [
+            {"categoria": "Aretes", "presupuesto": "400 dólares"},
+            {"categoria": "Cadenas"},
+            {"categoria": "Cadenas", "presupuesto": "800 dólares"},
+        ],
+        "activo": 2,
+    }
+    limpia = intereses.anotar(sucia, material="oro")
+    assert intereses.lista(limpia) == [
+        {"categoria": "Aretes", "presupuesto": "400 dólares"},
+        {"categoria": "Cadenas", "presupuesto": "800 dólares", "material": "oro"},
+    ]
+    assert limpia["activo"] == 1
+    volver = intereses.anotar(sucia, categoria="Aretes", ocasion="aniversario")
+    assert [i["categoria"] for i in intereses.lista(volver)] == ["Aretes", "Cadenas"]
+    assert volver["activo"] == 0
+
+
+def test_dos_joyas_con_datos_de_la_misma_categoria_no_se_juntan():
+    c = intereses.anotar(None, categoria="Anillos", material="oro")
+    c = intereses.anotar(c, otra_joya=True, categoria="Anillos", material="plata")
+    c = intereses.anotar(c, talla="7")
+    assert len(intereses.lista(c)) == 2
+
+
 def test_hay_un_tope_de_joyas_por_cliente():
     c = None
     for n in range(intereses.MAXIMO + 3):
@@ -113,7 +153,8 @@ def test_dos_joyas_en_la_misma_conversacion_no_mezclan_el_presupuesto(session, c
     m = modelo(
         llamada("guardar_preferencias", categoria="Aretes", material="oro", presupuesto="400 dólares"),
         AIMessage("Anotado. ¿Para qué ocasión son los aretes?"),
-        llamada("guardar_preferencias", categoria="Cadenas", presupuesto="800 dólares"),
+        # Gemini real manda es_otra_joya aquí; no debe duplicar la cadena.
+        llamada("guardar_preferencias", categoria="Cadenas", presupuesto="800 dólares", es_otra_joya=True),
         AIMessage("Listo, también la cadena. ¿De qué material la prefieres?"),
         AIMessage("Claro, volvamos a los aretes de oro."),
     )

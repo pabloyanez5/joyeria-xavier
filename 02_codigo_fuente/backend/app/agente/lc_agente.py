@@ -56,7 +56,8 @@ cliente te dé un dato, guárdalo con la herramienta de preferencias.
 - El cliente puede pedir más de una joya. Cada joya es un interés aparte, con su propio material, \
 talla, ocasión y presupuesto. Cuando hable de una joya distinta, guarda sus datos indicando la \
 categoría de esa joya; nunca pases el presupuesto ni la talla de una joya a otra. Si vuelve a una \
-joya de la que ya hablaron, retoma lo que tienes anotado de ella sin volver a preguntarlo.
+joya de la que ya hablaron, retoma lo que tienes anotado de ella sin volver a preguntarlo. No des \
+por hecho el material de una joya por lo que dijo de otra: si no lo sabes, pregúntalo.
 - Nunca inventes precios, existencias, plazos ni políticas. Para datos reales usa las herramientas.
 - Cuando el cliente pregunte por precios, joyas, categorías o quiera cotizar, llama SIEMPRE primero \
 a la herramienta del catálogo y menciona un precio "desde" real que ella devuelva.
@@ -239,8 +240,9 @@ def construir_herramientas(
 
         De la joya: categoria (Anillos, Argollas, Cadenas, Pulseras, Aretes, Dijes), modelo que
         le interesa, material (oro o plata), talla, ocasion y presupuesto. Cada joya se guarda
-        aparte: si los datos son de una joya distinta a la que venían hablando, indica su
-        categoria; si quiere una segunda joya de la misma categoría, pon es_otra_joya en true.
+        aparte: si los datos son de una joya distinta a la que venían hablando, basta con
+        indicar su categoria. Usa es_otra_joya en true solo si quiere dos joyas distintas de
+        la misma categoría (por ejemplo, dos anillos diferentes).
         Del cliente: nombre (cómo prefiere que lo llamen) o acepta_el_nombre en true cuando
         acepte que lo llames por el nombre que ya tienes."""
         guardado = {}
