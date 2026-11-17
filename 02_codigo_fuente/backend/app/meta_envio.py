@@ -76,6 +76,25 @@ class EnviadorMeta(Enviador):
             "recipient_type": "individual",
             "to": destinatario,
         }
+        if s.tipo == "tarjeta" and s.botones and s.imagen_url:
+            return {
+                **base,
+                "type": "interactive",
+                "interactive": {
+                    "type": "button",
+                    "header": {"type": "image", "image": {"link": s.imagen_url}},
+                    "body": {"text": s.texto[:LARGO_CUERPO]},
+                    "action": {
+                        "buttons": [
+                            {
+                                "type": "reply",
+                                "reply": {"id": b.id, "title": cortar(b.titulo, LARGO_BOTON)},
+                            }
+                            for b in s.botones[:MAX_BOTONES]
+                        ]
+                    },
+                },
+            }
         if s.tipo == "botones" and s.botones:
             return {
                 **base,
