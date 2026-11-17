@@ -264,6 +264,7 @@ def atender_mensaje(
                 cliente.nombre_preferido,
                 cliente.contexto_cualificacion or {},
                 url_web(),
+                url_media(),
             )
     _anotar_intencion(cliente, detectadas or [intencion])
     # En el panel se guarda lo mismo que recibe el cliente (lista, botones y enlace incluidos).

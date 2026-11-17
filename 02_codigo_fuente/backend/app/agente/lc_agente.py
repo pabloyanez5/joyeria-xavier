@@ -104,6 +104,7 @@ class _Estado:
     def __init__(self) -> None:
         self.escalar = False
         self.lista: Saliente | None = None
+        self.fotos: list[Saliente] = []  # tarjetas con foto y precio que acompañan a la lista
         self.herramientas: list[str] = []
         self.origen = "modelo"  # pasa a "respaldo" si el modelo principal falla
 
@@ -377,11 +378,19 @@ def construir_herramientas(
             if nombre is None:
                 return f"No hay una categoría llamada '{categoria}'."
             lista = menu.lista_de_productos(session, nombre, "")
+            from app.agente.servicio import url_media
+
+            estado.fotos = menu.fotos_de_productos(session, nombre, url_media())
         else:
             lista = menu.lista_de_categorias(session, "")
         if lista is None:
             return "No hay opciones para mostrar."
         estado.lista = lista
+        if estado.fotos:
+            return (
+                "Se mostrará una lista tocable al cliente junto con tu respuesta, y después "
+                "fotos de las joyas con su precio desde. No describas las fotos."
+            )
         return "Se mostrará una lista tocable al cliente junto con tu respuesta."
 
     def derivar_a_asesor(motivo: str) -> str:
@@ -560,7 +569,7 @@ def responder(
     salientes = None
     if estado.lista is not None:
         estado.lista.texto = respuesta[:1024]
-        salientes = [estado.lista]
+        salientes = [estado.lista, *estado.fotos]
     return ResultadoAgente(
         texto=respuesta,
         escalar=estado.escalar,

@@ -35,7 +35,7 @@ class Fila:
 
 @dataclass
 class Saliente:
-    tipo: str  # "texto" | "botones" | "lista" | "imagen"
+    tipo: str  # "texto" | "botones" | "lista" | "imagen" | "tarjeta" (foto con botones)
     texto: str
     botones: list[Boton] = field(default_factory=list)
     filas: list[Fila] = field(default_factory=list)
@@ -44,6 +44,9 @@ class Saliente:
 
     def plano(self) -> str:
         """Versión solo texto, para canales sin botones ni listas."""
+        if self.tipo == "tarjeta":
+            foto = f"\n{self.imagen_url}" if self.imagen_url else ""
+            return self.texto + foto + "\n" + "\n".join(f"• {b.titulo}" for b in self.botones)
         if self.tipo == "botones":
             opciones = [b.titulo for b in self.botones]
         elif self.tipo == "lista":
@@ -72,3 +75,8 @@ def lista(cuerpo: str, filas: list[Fila], etiqueta: str = "Ver opciones") -> Sal
 
 def imagen(url: str, pie: str) -> Saliente:
     return Saliente("imagen", pie, imagen_url=url)
+
+
+def tarjeta(url: str, cuerpo: str, opciones: list[Boton]) -> Saliente:
+    """Foto con texto y botones en un solo mensaje (JOY-82): se ve la joya antes de elegirla."""
+    return Saliente("tarjeta", cuerpo, botones=opciones[:MAX_BOTONES], imagen_url=url)

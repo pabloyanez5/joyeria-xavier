@@ -14,6 +14,7 @@ from app.agente.servicio import atender_mensaje
 from app.cache import CacheIdentidad, get_cache
 from app.clientes import identificar_cliente
 from app.db import get_session
+from app.mensajes import botones
 from app.mensajes import texto as mensaje_de_texto
 from app.meta_envio import Enviador, enviador_desde_entorno
 
@@ -148,11 +149,16 @@ def _enviar_respuesta(enviador: Enviador, m: Entrante, resultado) -> int:
                 m.canal,
                 _ocultar(m.id_canal),
             )
-            if saliente.tipo != "imagen":
+            if saliente.tipo not in ("imagen", "tarjeta"):
                 break
-            # Si Meta no pudo traer la foto, se manda igual su descripción.
+            # Si Meta no pudo traer la foto, se manda igual su descripción (y sus botones).
+            sin_foto = (
+                botones(saliente.texto, saliente.botones)
+                if saliente.tipo == "tarjeta"
+                else mensaje_de_texto(saliente.texto)
+            )
             try:
-                if enviador.enviar_saliente(m.canal, m.id_canal, mensaje_de_texto(saliente.texto)):
+                if enviador.enviar_saliente(m.canal, m.id_canal, sin_foto):
                     aceptados += 1
             except Exception:
                 logger.exception("Tampoco se pudo enviar el texto de la foto")

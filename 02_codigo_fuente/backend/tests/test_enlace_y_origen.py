@@ -46,8 +46,8 @@ def _ultimo_saliente(session) -> Mensaje:
 def test_en_modo_reglas_el_cliente_recibe_la_lista_y_el_enlace(session, cache, catalogo):
     r = _enviar(session, cache, "quiero ver anillos")
     tipos = [m.tipo for m in r.mensajes]
-    assert tipos == ["lista", "texto"]
-    assert f"{WEB}/?categoria=Anillos" in r.mensajes[1].texto
+    assert tipos == ["lista", "tarjeta", "texto"]  # la tarjeta es la foto con precio (JOY-82)
+    assert f"{WEB}/?categoria=Anillos" in r.mensajes[-1].texto
 
 
 def test_el_enlace_lleva_la_joya_y_el_material_que_dijo_el_cliente(session, cache, catalogo):

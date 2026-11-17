@@ -10,7 +10,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.catalogo import precios_vigentes
-from app.mensajes import Boton, Fila, Saliente, botones, imagen, lista, texto
+from app.mensajes import Boton, Fila, Saliente, botones, imagen, lista, tarjeta, texto
 from app.models import Producto
 
 BOTONES_INICIO = [
@@ -91,6 +91,53 @@ def lista_de_productos(session: Session, categoria: str, cuerpo: str) -> Salient
     return lista(cuerpo, filas, etiqueta="Ver joyas")
 
 
+MAX_FOTOS = 3  # fotos por categoría, para no llenar el chat
+
+
+def _url_de_foto(producto: Producto, base_media: str) -> str | None:
+    if not producto.imagen_url:
+        return None
+    url = producto.imagen_url
+    if not url.startswith("http"):
+        url = base_media.rstrip("/") + "/" + url.lstrip("/")
+    return url
+
+
+def fotos_de_productos(session: Session, categoria: str, base_media: str) -> list[Saliente]:
+    """Una tarjeta por joya, con su foto, nombre y precio "desde", para ver antes de elegir.
+
+    Se muestran hasta MAX_FOTOS. Si varias joyas comparten la misma foto (las provisionales son
+    una por categoría), se manda solo una vez: repetirla no ayuda a elegir."""
+    productos = _productos(session, categoria)
+    vigentes = precios_vigentes(session, productos)
+    tarjetas, vistas = [], set()
+    for p in productos:
+        url = _url_de_foto(p, base_media)
+        if url is None or url in vistas:
+            continue
+        vistas.add(url)
+        desde = min((x.precio for x in vigentes.get(p.id, [])), default=None)
+        cuerpo = f"*{p.nombre}*" + (f"\nDesde {_dinero(desde)}" if desde is not None else "")
+        tarjetas.append(
+            tarjeta(
+                url,
+                cuerpo,
+                [Boton(f"prod:{p.id}", "Ver detalle"), Boton(f"precios:{p.id}", "Ver precios")],
+            )
+        )
+        if len(tarjetas) == MAX_FOTOS:
+            break
+    return tarjetas
+
+
+def vitrina(session: Session, categoria: str, cuerpo: str, base_media: str) -> list[Saliente]:
+    """La lista de joyas de una categoría seguida de sus fotos con precio."""
+    elegida = lista_de_productos(session, categoria, cuerpo)
+    if elegida is None:
+        return []
+    return [elegida, *fotos_de_productos(session, categoria, base_media)]
+
+
 def ficha_de_producto(session: Session, producto_id: int, base_media: str) -> list[Saliente]:
     producto = session.get(Producto, producto_id)
     if producto is None or not producto.activo:
@@ -110,10 +157,8 @@ def ficha_de_producto(session: Session, producto_id: int, base_media: str) -> li
             Boton("menu:asesor", "Hablar con asesor"),
         ],
     )
-    if producto.imagen_url:
-        url = producto.imagen_url
-        if not url.startswith("http"):
-            url = base_media.rstrip("/") + "/" + url.lstrip("/")
+    url = _url_de_foto(producto, base_media)
+    if url:
         return [imagen(url, pie), opciones]
     return [botones(pie + "\n\n¿Quieres ver el precio detallado?", opciones.botones)]
 
@@ -157,7 +202,7 @@ def enlace_del_catalogo(base_web: str, contexto: dict) -> str:
 
 def enriquecer(
     session: Session, intencion: str, respuesta: str, nombre: str | None, contexto: dict,
-    base_web: str,
+    base_web: str, base_media: str = "",
 ) -> list[Saliente]:
     """Convierte la respuesta de texto del agente en un mensaje con botones o lista."""
     if intencion in ("saludo", "otro"):
@@ -170,15 +215,15 @@ def enriquecer(
         accion = "cotizar" if intencion == "cotizar" else "ver"
         if categoria:
             cuerpo = f"Claro{coma}. Estas son nuestras joyas de {categoria.lower()}; elige la que quieres {accion}."
-            elegida = lista_de_productos(session, categoria, cuerpo)
+            elegidas = vitrina(session, categoria, cuerpo, base_media or base_web)
         else:
             cuerpo = f"Claro{coma}. ¿Qué tipo de joya quieres {accion}?"
-            elegida = lista_de_categorias(session, cuerpo)
-        if elegida is not None:
+            elegidas = [m for m in [lista_de_categorias(session, cuerpo)] if m is not None]
+        if elegidas:
             # La lista no admite enlaces: el del catálogo va en un mensaje aparte, para que el
             # cliente lo reciba siempre (antes solo quedaba en el panel).
             enlace = enlace_del_catalogo(base_web, contexto)
-            return [elegida, texto(f"También puedes ver todo el catálogo y cotizar aquí: {enlace}")]
+            return [*elegidas, texto(f"También puedes ver todo el catálogo y cotizar aquí: {enlace}")]
     return [texto(respuesta)]
 
 
@@ -197,11 +242,12 @@ def responder_accion(
     if tipo == "cat":
         categoria = _categoria_existente(session, valor)
         if categoria:
-            elegida = lista_de_productos(
-                session, categoria, f"Estas son nuestras joyas de {categoria.lower()}. Elige una."
+            elegidas = vitrina(
+                session, categoria, f"Estas son nuestras joyas de {categoria.lower()}. Elige una.",
+                base_media,
             )
-            if elegida is not None:
-                return [elegida], False
+            if elegidas:
+                return elegidas, False
     if tipo in ("prod", "precios") and valor.isdigit():
         if tipo == "prod":
             return ficha_de_producto(session, int(valor), base_media), False
