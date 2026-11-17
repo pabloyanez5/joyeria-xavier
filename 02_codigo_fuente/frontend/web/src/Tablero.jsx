@@ -16,6 +16,46 @@ const dinero = (valor) => formatoDolar.format(Number(valor))
 // Las fechas llegan como AAAA-MM-DD; se muestran como DD/MM/AAAA sin pasar por zonas horarias.
 const fecha = (iso) => (iso ? iso.split('-').reverse().join('/') : '—')
 
+const FILTROS_VACIOS = { q: '', etapa: '', desde: '', hasta: '' }
+
+function consultaDe(filtros) {
+  const params = new URLSearchParams()
+  for (const [clave, valor] of Object.entries(filtros)) {
+    if (valor.trim()) params.set(clave, valor.trim())
+  }
+  const texto = params.toString()
+  return texto ? `?${texto}` : ''
+}
+
+// Historial cronológico de una orden: cada etapa, cuándo y quién la registró (JOY-83).
+function Historial({ orden }) {
+  const [pasos, setPasos] = useState(null)
+  const [error, setError] = useState(null)
+
+  useEffect(() => {
+    pedir(`/api/ordenes/${orden.id}/historial`)
+      .then(leer)
+      .then(setPasos)
+      .catch((e) => setError(e.message))
+  }, [orden.id, orden.etapa_actual])
+
+  if (error) return <p className="estado error">{error}</p>
+  if (!pasos) return <small>Cargando historial…</small>
+  return (
+    <ol className="historial">
+      {pasos.map((p, n) => (
+        <li key={n}>
+          <strong>{NOMBRE[p.etapa] ?? p.etapa}</strong>
+          <small>
+            {hora(p.creado_en)}
+            {p.usuario ? ` · ${p.usuario}` : ''}
+          </small>
+        </li>
+      ))}
+    </ol>
+  )
+}
+
 const TEXTO_AVISO = {
   enviado: 'El cliente recibió el aviso por su canal.',
   no_enviado: 'La orden avanzó, pero el aviso no se pudo enviar',
@@ -31,16 +71,24 @@ export default function Tablero({ version, onCambio, puedeAvanzar = false, puede
   const [avisar, setAvisar] = useState(true)
   const [ocupada, setOcupada] = useState(null)
   const [abonos, setAbonos] = useState({}) // lo que el asesor va escribiendo, por orden
+  const [filtros, setFiltros] = useState(FILTROS_VACIOS)
+  const [abiertas, setAbiertas] = useState({}) // órdenes con el historial desplegado
+  const consulta = consultaDe(filtros)
+  const filtrando = consulta !== ''
 
   const cargar = useCallback(() => {
-    pedir('/api/ordenes')
+    pedir(`/api/ordenes${consulta}`)
       .then(leer)
       .then((o) => {
         setOrdenes(o)
         setError(null)
       })
       .catch((e) => setError(e.message))
-  }, [])
+  }, [consulta])
+
+  function filtrar(campo) {
+    return (e) => setFiltros((f) => ({ ...f, [campo]: e.target.value }))
+  }
 
   useEffect(() => {
     cargar()
@@ -115,6 +163,46 @@ export default function Tablero({ version, onCambio, puedeAvanzar = false, puede
         </button>
       </h2>
 
+      <form className="tablero-filtros" role="search" onSubmit={(e) => e.preventDefault()}>
+        <label>
+          Buscar
+          <input
+            type="search"
+            value={filtros.q}
+            onChange={filtrar('q')}
+            maxLength={100}
+            placeholder="OP-000012, PD-000003, cliente o detalle"
+          />
+        </label>
+        <label>
+          Etapa
+          <select value={filtros.etapa} onChange={filtrar('etapa')}>
+            <option value="">Todas</option>
+            {COLUMNAS.map((c) => (
+              <option key={c.etapa} value={c.etapa}>
+                {c.titulo}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Creadas desde
+          <input type="date" value={filtros.desde} onChange={filtrar('desde')} />
+        </label>
+        <label>
+          Hasta
+          <input type="date" value={filtros.hasta} min={filtros.desde || undefined} onChange={filtrar('hasta')} />
+        </label>
+        <button type="button" disabled={!filtrando} onClick={() => setFiltros(FILTROS_VACIOS)}>
+          Limpiar filtros
+        </button>
+      </form>
+      {filtrando && (
+        <p className="nota">
+          {ordenes.length === 0 ? 'Ninguna orden cumple los filtros.' : `${ordenes.length} orden(es) con estos filtros.`}
+        </p>
+      )}
+
       {error && <p className="estado error">{error}</p>}
       {aviso && <p className={`estado ${aviso.tipo === 'error' ? 'error' : 'ok'}`}>{aviso.texto}</p>}
 
@@ -183,6 +271,15 @@ export default function Tablero({ version, onCambio, puedeAvanzar = false, puede
                       )}
                     </div>
                   )}
+                  <button
+                    type="button"
+                    className="tarjeta-historial"
+                    aria-expanded={Boolean(abiertas[o.id])}
+                    onClick={() => setAbiertas((a) => ({ ...a, [o.id]: !a[o.id] }))}
+                  >
+                    {abiertas[o.id] ? 'Ocultar historial' : 'Ver historial'}
+                  </button>
+                  {abiertas[o.id] && <Historial orden={o} />}
                   {o.acuse_por && (
                     <small>
                       Recibida por {o.acuse_por} · {hora(o.acuse_en)}
