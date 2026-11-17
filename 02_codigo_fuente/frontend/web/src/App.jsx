@@ -1,8 +1,12 @@
 import { useEffect, useState } from 'react'
 import './App.css'
+import Chat from './Chat.jsx'
 
 const MATERIALES = ['oro', 'plata']
 const FILTROS_VACIOS = { categoria: '', material: '', q: '', precioMax: '' }
+const PERSONALIZADO = '__personalizado__'
+const MENSAJE_SIN_RESULTADOS =
+  'Hola, no encontré en el catálogo la joya que busco. ¿Me pueden ayudar?'
 
 const formatoDolar = new Intl.NumberFormat('es-EC', {
   style: 'currency',
@@ -21,6 +25,55 @@ function construirConsulta({ categoria, material, q, precioMax }) {
   if (precioMax) params.set('precio_max', precioMax)
   const texto = params.toString()
   return texto ? `?${texto}` : ''
+}
+
+function ContactoAsesor({ titulo, mensaje }) {
+  const [canales, setCanales] = useState([])
+  const [canal, setCanal] = useState('whatsapp')
+
+  useEffect(() => {
+    const control = new AbortController()
+    fetch(`/api/contacto?mensaje=${encodeURIComponent(mensaje)}`, {
+      signal: control.signal,
+    })
+      .then((r) => (r.ok ? r.json() : []))
+      .then(setCanales)
+      .catch(() => {})
+    return () => control.abort()
+  }, [mensaje])
+
+  const elegido = canales.find((c) => c.canal === canal) ?? canales[0]
+
+  return (
+    <div className="contacto">
+      <p>{titulo}</p>
+      {elegido && (
+        <>
+          <label>
+            Canal preferido
+            <select
+              value={elegido.canal}
+              onChange={(e) => setCanal(e.target.value)}
+            >
+              {canales.map((c) => (
+                <option key={c.canal} value={c.canal}>
+                  {c.nombre}
+                </option>
+              ))}
+            </select>
+          </label>
+          <a
+            className="boton primario"
+            href={elegido.enlace}
+            target="_blank"
+            rel="noreferrer"
+          >
+            Contactar a un asesor por {elegido.nombre}
+          </a>
+        </>
+      )}
+    </div>
+  )
 }
 
 function Configurador({ productoId, onCerrar }) {
@@ -44,6 +97,7 @@ function Configurador({ productoId, onCerrar }) {
   const material = seleccion?.material ?? null
   const quilataje = seleccion?.quilataje ?? null
   const clave = `${material}|${quilataje ?? ''}`
+  const noEstandar = material === PERSONALIZADO || quilataje === PERSONALIZADO
 
   useEffect(() => {
     fetch(`/api/productos/${productoId}`)
@@ -65,7 +119,8 @@ function Configurador({ productoId, onCerrar }) {
   }, [productoId])
 
   useEffect(() => {
-    if (material === null) return undefined
+    if (material === null || material === PERSONALIZADO) return undefined
+    if (quilataje === PERSONALIZADO) return undefined
     const control = new AbortController()
     const inicio = performance.now()
     const params = new URLSearchParams({ material })
@@ -95,14 +150,18 @@ function Configurador({ productoId, onCerrar }) {
 
   function cambiarMaterial(e) {
     const m = e.target.value
-    setSeleccion({ material: m, quilataje: quilatajesDe(m)[0] ?? null })
+    setSeleccion({
+      material: m,
+      quilataje: m === PERSONALIZADO ? null : (quilatajesDe(m)[0] ?? null),
+    })
   }
 
   function cambiarQuilataje(e) {
     setSeleccion((s) => ({ ...s, quilataje: e.target.value }))
   }
 
-  const cotizando = material !== null && cotizacion.clave !== clave
+  const cotizando =
+    material !== null && !noEstandar && cotizacion.clave !== clave
   const disponibles = material ? quilatajesDe(material) : []
 
   return (
@@ -118,6 +177,13 @@ function Configurador({ productoId, onCerrar }) {
         {!detalle.error && !detalle.producto && <p className="estado">Cargando…</p>}
         {detalle.producto && (
           <>
+            {detalle.producto.imagen_url && (
+              <img
+                className="foto"
+                src={detalle.producto.imagen_url}
+                alt={detalle.producto.nombre}
+              />
+            )}
             <span className="categoria">{detalle.producto.categoria}</span>
             <h2>{detalle.producto.nombre}</h2>
             <p className="descripcion">{detalle.producto.descripcion}</p>
@@ -131,6 +197,7 @@ function Configurador({ productoId, onCerrar }) {
                       {m}
                     </option>
                   ))}
+                  <option value={PERSONALIZADO}>Otro (personalizado)</option>
                 </select>
               </label>
               <label>
@@ -147,26 +214,46 @@ function Configurador({ productoId, onCerrar }) {
                       {disponibles.includes(q) ? '' : ' (no disponible)'}
                     </option>
                   ))}
+                  {disponibles.length > 0 && (
+                    <option value={PERSONALIZADO}>Otro (personalizado)</option>
+                  )}
                 </select>
               </label>
             </div>
 
-            <div className="resultado" aria-live="polite">
-              {cotizando && <span className="estado">Calculando…</span>}
-              {!cotizando && cotizacion.error && (
-                <span className="estado error">{cotizacion.error}</span>
-              )}
-              {!cotizando && cotizacion.datos && (
-                <>
-                  <span className="precio-grande">
-                    {dinero(cotizacion.datos.precio)}
-                  </span>
-                  <span className="nota">
-                    Precio referencial · respondió en {cotizacion.ms} ms
-                  </span>
-                </>
-              )}
-            </div>
+            {noEstandar ? (
+              <ContactoAsesor
+                titulo="Esta combinación no se puede cotizar automáticamente. Un asesor te ayuda."
+                mensaje={`Hola, quiero cotizar "${detalle.producto.nombre}" con un material o quilataje distinto a los del catálogo.`}
+              />
+            ) : (
+              <div className="resultado" aria-live="polite">
+                {cotizando && <span className="estado">Calculando…</span>}
+                {!cotizando && cotizacion.error && (
+                  <span className="estado error">{cotizacion.error}</span>
+                )}
+                {!cotizando && cotizacion.datos && (
+                  <>
+                    <span className="precio-grande">
+                      {dinero(cotizacion.datos.precio)}
+                    </span>
+                    {cotizacion.datos.metodo === 'formula' && (
+                      <ul className="desglose" aria-label="Cómo se calcula el precio">
+                        <li>
+                          Material: {Number(cotizacion.datos.peso_gramos)} g ×{' '}
+                          {dinero(cotizacion.datos.precio_gramo)}/g ={' '}
+                          {dinero(cotizacion.datos.costo_material)}
+                        </li>
+                        <li>Mano de obra: {dinero(cotizacion.datos.mano_obra)}</li>
+                      </ul>
+                    )}
+                    <span className="nota">
+                      Precio referencial · respondió en {cotizacion.ms} ms
+                    </span>
+                  </>
+                )}
+              </div>
+            )}
           </>
         )}
         <button type="button" className="boton" onClick={onCerrar}>
@@ -180,6 +267,14 @@ function Configurador({ productoId, onCerrar }) {
 function Tarjeta({ producto, onConfigurar }) {
   return (
     <li className="tarjeta">
+      {producto.imagen_url && (
+        <img
+          className="foto"
+          src={producto.imagen_url}
+          alt={producto.nombre}
+          loading="lazy"
+        />
+      )}
       <span className="categoria">{producto.categoria}</span>
       <h2>{producto.nombre}</h2>
       <p className="descripcion">{producto.descripcion}</p>
@@ -204,8 +299,19 @@ function Tarjeta({ producto, onConfigurar }) {
   )
 }
 
+// Los enlaces del asistente llevan filtros en la URL (?categoria=Anillos&material=oro).
+function filtrosDesdeUrl() {
+  const params = new URLSearchParams(window.location.search)
+  const material = params.get('material') ?? ''
+  return {
+    ...FILTROS_VACIOS,
+    categoria: params.get('categoria') ?? '',
+    material: MATERIALES.includes(material) ? material : '',
+  }
+}
+
 function App() {
-  const [filtros, setFiltros] = useState(FILTROS_VACIOS)
+  const [filtros, setFiltros] = useState(filtrosDesdeUrl)
   const [categorias, setCategorias] = useState([])
   const [configurando, setConfigurando] = useState(null)
   const [resultado, setResultado] = useState({
@@ -243,6 +349,9 @@ function App() {
   function cambiar(campo) {
     return (e) => setFiltros((f) => ({ ...f, [campo]: e.target.value }))
   }
+
+  const sinResultados =
+    !resultado.error && !cargando && resultado.productos.length === 0
 
   return (
     <main className="pagina">
@@ -300,8 +409,11 @@ function App() {
 
       {resultado.error && <p className="estado error">{resultado.error}</p>}
       {!resultado.error && cargando && <p className="estado">Cargando…</p>}
-      {!resultado.error && !cargando && resultado.productos.length === 0 && (
-        <p className="estado">No hay joyas con esos filtros.</p>
+      {sinResultados && (
+        <ContactoAsesor
+          titulo="No hay joyas con esos filtros. Un asesor puede ayudarte a encontrar lo que buscas."
+          mensaje={MENSAJE_SIN_RESULTADOS}
+        />
       )}
 
       <ul className="rejilla">
@@ -309,6 +421,8 @@ function App() {
           <Tarjeta key={p.id} producto={p} onConfigurar={setConfigurando} />
         ))}
       </ul>
+
+      <Chat />
 
       {configurando !== null && (
         <Configurador

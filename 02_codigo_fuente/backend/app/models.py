@@ -3,7 +3,7 @@ from decimal import Decimal
 
 from sqlalchemy import (
     JSON, Boolean, CheckConstraint, Date, DateTime, ForeignKey, Index,
-    Numeric, String, Text, UniqueConstraint, func,
+    Numeric, String, Text, UniqueConstraint, func, true,
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -92,6 +92,8 @@ class Mensaje(Base):
     direccion: Mapped[str] = mapped_column(String(10))
     contenido: Mapped[str] = mapped_column(Text)
     id_externo: Mapped[str | None] = mapped_column(String(200), unique=True)
+    # Quién escribió un mensaje saliente: None = el agente; "asesor" = una persona desde el panel.
+    autor: Mapped[str | None] = mapped_column(String(20))
     creado_en: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
@@ -105,6 +107,22 @@ class Producto(Base):
     categoria: Mapped[str] = mapped_column(String(100))
     descripcion: Mapped[str | None] = mapped_column(Text)
     activo: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Insumos de la cotización por fórmula: peso de la pieza y mano de obra del taller.
+    peso_gramos: Mapped[Decimal | None] = mapped_column(Numeric(7, 2))
+    mano_obra: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
+    imagen_url: Mapped[str | None] = mapped_column(String(500))
+
+
+class TarifaMaterial(Base):
+    """Precio por gramo de un material (y quilataje), con historial por fecha de vigencia."""
+
+    __tablename__ = "tarifas_material"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    material: Mapped[str] = mapped_column(String(50))
+    quilataje: Mapped[str | None] = mapped_column(String(10))
+    precio_gramo: Mapped[Decimal] = mapped_column(Numeric(10, 2))
+    vigente_desde: Mapped[date] = mapped_column(Date)
 
 
 class Precio(Base):
@@ -126,6 +144,12 @@ class Orden(Base):
     producto_id: Mapped[int | None] = mapped_column(ForeignKey("productos.id"))
     descripcion: Mapped[str] = mapped_column(Text)
     etapa_actual: Mapped[str] = mapped_column(String(50))
+    # Cola del taller: la orden se publica al crearse y queda con el acuse pendiente
+    # hasta que el taller confirma que la recibió.
+    acuse_pendiente: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default=true()
+    )
+    publicada_en: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     creado_en: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

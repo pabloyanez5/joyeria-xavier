@@ -1,5 +1,6 @@
+from dataclasses import dataclass
 from datetime import date
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
@@ -7,9 +8,11 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.db import get_session
-from app.models import Precio, Producto
+from app.models import Precio, Producto, TarifaMaterial
 
 router = APIRouter(prefix="/productos", tags=["catalogo"])
+
+CENTAVOS = Decimal("0.01")
 
 
 class PrecioOut(BaseModel):
@@ -23,31 +26,109 @@ class ProductoOut(BaseModel):
     nombre: str
     categoria: str
     descripcion: str | None
+    imagen_url: str | None = None
     precios: list[PrecioOut]
     precio_desde: Decimal | None
 
 
-def precios_vigentes(session: Session, producto_ids: list[int]) -> dict[int, list[Precio]]:
-    """Por producto, el precio más reciente (sin futuros) de cada material/quilataje."""
+@dataclass
+class PrecioCalculado:
+    """Precio de una combinación material/quilataje de un producto, ya resuelto."""
+
+    producto_id: int
+    material: str
+    quilataje: str | None
+    precio: Decimal
+    metodo: str  # "formula" (peso x precio por gramo + mano de obra) o "tabla" (precio fijo)
+    peso_gramos: Decimal | None = None
+    precio_gramo: Decimal | None = None
+    costo_material: Decimal | None = None
+    mano_obra: Decimal | None = None
+
+
+def _clave(material: str, quilataje: str | None) -> tuple[str, str]:
+    return (material.lower(), (quilataje or "").lower())
+
+
+def tarifas_vigentes(session: Session) -> dict[tuple[str, str], TarifaMaterial]:
+    """Por material/quilataje, el precio por gramo más reciente (sin futuros)."""
+    filas = session.scalars(
+        select(TarifaMaterial)
+        .where(TarifaMaterial.vigente_desde <= date.today())
+        .order_by(TarifaMaterial.vigente_desde, TarifaMaterial.id)
+    ).all()
+    return {_clave(t.material, t.quilataje): t for t in filas}
+
+
+def calcular_precio(
+    producto: Producto, precio_tabla: Precio, tarifa: TarifaMaterial | None
+) -> PrecioCalculado:
+    """Fórmula: peso (g) x precio por gramo del material + mano de obra de la pieza.
+
+    Si la pieza no tiene peso registrado o no hay tarifa vigente para el material,
+    se usa el precio fijo de la tabla `precios`.
+    """
+    if producto.peso_gramos is not None and tarifa is not None:
+        peso = Decimal(producto.peso_gramos)
+        costo_material = (peso * Decimal(tarifa.precio_gramo)).quantize(
+            CENTAVOS, rounding=ROUND_HALF_UP
+        )
+        mano_obra = Decimal(producto.mano_obra or 0).quantize(CENTAVOS)
+        return PrecioCalculado(
+            producto_id=producto.id,
+            material=precio_tabla.material,
+            quilataje=precio_tabla.quilataje,
+            precio=costo_material + mano_obra,
+            metodo="formula",
+            peso_gramos=peso,
+            precio_gramo=Decimal(tarifa.precio_gramo),
+            costo_material=costo_material,
+            mano_obra=mano_obra,
+        )
+    return PrecioCalculado(
+        producto_id=producto.id,
+        material=precio_tabla.material,
+        quilataje=precio_tabla.quilataje,
+        precio=precio_tabla.precio,
+        metodo="tabla",
+    )
+
+
+def precios_vigentes(
+    session: Session, productos: list[Producto]
+) -> dict[int, list[PrecioCalculado]]:
+    """Por producto, el precio de cada material/quilataje que ofrece.
+
+    La tabla `precios` define qué combinaciones se ofrecen (y es el respaldo);
+    el monto sale de la fórmula cuando la pieza tiene peso y hay tarifa vigente.
+    """
+    por_id = {p.id: p for p in productos}
+    if not por_id:
+        return {}
     filas = session.scalars(
         select(Precio)
-        .where(Precio.producto_id.in_(producto_ids), Precio.vigente_desde <= date.today())
+        .where(Precio.producto_id.in_(list(por_id)), Precio.vigente_desde <= date.today())
         .order_by(Precio.vigente_desde, Precio.id)
     ).all()
     ultimos = {(p.producto_id, p.material, p.quilataje): p for p in filas}
-    resultado: dict[int, list[Precio]] = {}
+    tarifas = tarifas_vigentes(session)
+    resultado: dict[int, list[PrecioCalculado]] = {}
     for p in ultimos.values():
-        resultado.setdefault(p.producto_id, []).append(p)
+        tarifa = tarifas.get(_clave(p.material, p.quilataje))
+        resultado.setdefault(p.producto_id, []).append(
+            calcular_precio(por_id[p.producto_id], p, tarifa)
+        )
     return resultado
 
 
-def armar_salida(producto: Producto, precios: list[Precio]) -> ProductoOut:
+def armar_salida(producto: Producto, precios: list[PrecioCalculado]) -> ProductoOut:
     ordenados = sorted(precios, key=lambda x: x.precio)
     return ProductoOut(
         id=producto.id,
         nombre=producto.nombre,
         categoria=producto.categoria,
         descripcion=producto.descripcion,
+        imagen_url=producto.imagen_url,
         precios=[
             PrecioOut(material=x.material, quilataje=x.quilataje, precio=x.precio)
             for x in ordenados
@@ -73,7 +154,7 @@ def listar_productos(
     if q:
         consulta = consulta.where(Producto.nombre.ilike(f"%{q}%"))
     productos = session.scalars(consulta).all()
-    vigentes = precios_vigentes(session, [p.id for p in productos])
+    vigentes = precios_vigentes(session, list(productos))
 
     filtra_precio = bool(material) or precio_min is not None or precio_max is not None
     salida = []
@@ -108,7 +189,8 @@ def detalle_producto(producto_id: int, session: Session = Depends(get_session)):
     producto = session.get(Producto, producto_id)
     if producto is None or not producto.activo:
         raise HTTPException(status_code=404, detail="Producto no encontrado")
-    return armar_salida(producto, precios_vigentes(session, [producto.id]).get(producto.id, []))
+    return armar_salida(producto, precios_vigentes(session, [producto]).get(producto.id, []))
+
 
 class CotizacionOut(BaseModel):
     producto_id: int
@@ -118,6 +200,12 @@ class CotizacionOut(BaseModel):
     precio: Decimal
     moneda: str = "USD"
     referencial: bool = True
+    # Desglose de la fórmula (vacío si el precio viene de la tabla fija).
+    metodo: str = "tabla"
+    peso_gramos: Decimal | None = None
+    precio_gramo: Decimal | None = None
+    costo_material: Decimal | None = None
+    mano_obra: Decimal | None = None
 
 
 def _igual(a: str | None, b: str | None) -> bool:
@@ -134,7 +222,7 @@ def cotizar(
     producto = session.get(Producto, producto_id)
     if producto is None or not producto.activo:
         raise HTTPException(status_code=404, detail="Producto no encontrado")
-    for p in precios_vigentes(session, [producto.id]).get(producto.id, []):
+    for p in precios_vigentes(session, [producto]).get(producto.id, []):
         if _igual(p.material, material) and _igual(p.quilataje, quilataje):
             return CotizacionOut(
                 producto_id=producto.id,
@@ -142,6 +230,11 @@ def cotizar(
                 material=p.material,
                 quilataje=p.quilataje,
                 precio=p.precio,
+                metodo=p.metodo,
+                peso_gramos=p.peso_gramos,
+                precio_gramo=p.precio_gramo,
+                costo_material=p.costo_material,
+                mano_obra=p.mano_obra,
             )
     raise HTTPException(
         status_code=422, detail="Combinación no disponible para este producto"
