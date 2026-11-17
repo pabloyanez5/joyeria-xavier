@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.acceso import requiere
 from app.db import get_session
 from app.meta_envio import Enviador, ErrorMeta
 from app.models import (
@@ -17,8 +18,10 @@ router = APIRouter(prefix="/ordenes", tags=["ordenes"])
 
 ETAPAS = ("en_cola", "en_produccion", "terminada", "entregada")
 ETAPA_INICIAL = ETAPAS[0]
-ROLES_QUE_CREAN = ("asesor", "admin")
-ROLES_QUE_AVANZAN = ("taller", "admin")
+# Quién puede hacer qué (el rol admin pasa siempre). Dirección solo ve los indicadores.
+puede_crear = requiere("asesor")
+puede_ver = requiere("asesor", "taller")
+puede_avanzar = requiere("taller")
 
 # Aviso que recibe el cliente por su canal cuando la orden entra a cada etapa.
 AVISOS_AL_CLIENTE = {
@@ -33,6 +36,12 @@ AVISOS_AL_CLIENTE = {
 }
 
 
+def _registrar_acuse(orden: Orden, usuario: Usuario) -> None:
+    orden.acuse_pendiente = False
+    orden.acuse_usuario_id = usuario.id
+    orden.acuse_en = datetime.now(timezone.utc)
+
+
 def siguiente_etapa(etapa: str) -> str | None:
     try:
         posicion = ETAPAS.index(etapa)
@@ -45,7 +54,6 @@ class OrdenIn(BaseModel):
     cliente_id: int
     producto_id: int | None = None
     descripcion: str = Field(max_length=1000)
-    usuario_id: int | None = None  # asesor que la crea (aún no hay inicio de sesión)
 
     @field_validator("descripcion")
     @classmethod
@@ -66,6 +74,8 @@ class OrdenOut(BaseModel):
     descripcion: str
     etapa_actual: str
     acuse_pendiente: bool
+    acuse_por: str | None = None  # usuario del taller que confirmó el recibo
+    acuse_en: datetime | None = None
     publicada_en: datetime | None
     creado_en: datetime | None
     siguiente_etapa: str | None = None
@@ -73,7 +83,6 @@ class OrdenOut(BaseModel):
 
 class CambioEtapaIn(BaseModel):
     etapa: str
-    usuario_id: int | None = None  # quien la avanza (aún no hay inicio de sesión)
     avisar_al_cliente: bool = True
 
 
@@ -96,6 +105,7 @@ def nombre_de(cliente: Cliente | None) -> str | None:
 
 def armar_salida(session: Session, orden: Orden) -> OrdenOut:
     producto = session.get(Producto, orden.producto_id) if orden.producto_id else None
+    acuso = session.get(Usuario, orden.acuse_usuario_id) if orden.acuse_usuario_id else None
     return OrdenOut(
         id=orden.id,
         codigo=f"OP-{orden.id:06d}",
@@ -106,6 +116,8 @@ def armar_salida(session: Session, orden: Orden) -> OrdenOut:
         descripcion=orden.descripcion,
         etapa_actual=orden.etapa_actual,
         acuse_pendiente=orden.acuse_pendiente,
+        acuse_por=acuso.nombre if acuso else None,
+        acuse_en=orden.acuse_en,
         publicada_en=orden.publicada_en,
         creado_en=orden.creado_en,
         siguiente_etapa=siguiente_etapa(orden.etapa_actual),
@@ -113,7 +125,11 @@ def armar_salida(session: Session, orden: Orden) -> OrdenOut:
 
 
 @router.post("", response_model=OrdenOut, status_code=201)
-def crear_orden(datos: OrdenIn, session: Session = Depends(get_session)):
+def crear_orden(
+    datos: OrdenIn,
+    session: Session = Depends(get_session),
+    usuario: Usuario = Depends(puede_crear),
+):
     """Crea la orden y la publica de inmediato en la cola del taller con el acuse pendiente."""
     if session.get(Cliente, datos.cliente_id) is None:
         raise HTTPException(404, "El cliente no existe")
@@ -121,12 +137,6 @@ def crear_orden(datos: OrdenIn, session: Session = Depends(get_session)):
         producto = session.get(Producto, datos.producto_id)
         if producto is None or not producto.activo:
             raise HTTPException(404, "El producto no existe")
-    if datos.usuario_id is not None:
-        usuario = session.get(Usuario, datos.usuario_id)
-        if usuario is None or not usuario.activo:
-            raise HTTPException(404, "El usuario no existe")
-        if usuario.rol not in ROLES_QUE_CREAN:
-            raise HTTPException(422, "Solo un asesor puede crear órdenes")
 
     orden = Orden(
         cliente_id=datos.cliente_id,
@@ -139,14 +149,14 @@ def crear_orden(datos: OrdenIn, session: Session = Depends(get_session)):
     session.add(orden)
     session.flush()  # asigna el ID único
     session.add(
-        HistorialEtapa(orden_id=orden.id, etapa=ETAPA_INICIAL, usuario_id=datos.usuario_id)
+        HistorialEtapa(orden_id=orden.id, etapa=ETAPA_INICIAL, usuario_id=usuario.id)
     )
     session.commit()
     session.refresh(orden)
     return armar_salida(session, orden)
 
 
-@router.get("", response_model=list[OrdenOut])
+@router.get("", response_model=list[OrdenOut], dependencies=[Depends(puede_ver)])
 def listar_ordenes(
     etapa: str | None = Query(None, description="en_cola, en_produccion, terminada o entregada"),
     limite: int = Query(100, ge=1, le=300),
@@ -162,7 +172,7 @@ def listar_ordenes(
     return [armar_salida(session, o) for o in ordenes]
 
 
-@router.get("/cola", response_model=list[OrdenOut])
+@router.get("/cola", response_model=list[OrdenOut], dependencies=[Depends(puede_ver)])
 def cola_del_taller(session: Session = Depends(get_session)):
     """Órdenes esperando al taller, las más antiguas primero."""
     ordenes = session.scalars(
@@ -173,7 +183,7 @@ def cola_del_taller(session: Session = Depends(get_session)):
     return [armar_salida(session, o) for o in ordenes]
 
 
-@router.get("/{orden_id}", response_model=OrdenOut)
+@router.get("/{orden_id}", response_model=OrdenOut, dependencies=[Depends(puede_ver)])
 def detalle_orden(orden_id: int, session: Session = Depends(get_session)):
     orden = session.get(Orden, orden_id)
     if orden is None:
@@ -182,19 +192,23 @@ def detalle_orden(orden_id: int, session: Session = Depends(get_session)):
 
 
 @router.post("/{orden_id}/acuse", response_model=OrdenOut)
-def confirmar_acuse(orden_id: int, session: Session = Depends(get_session)):
-    """El taller confirma que recibió la orden (quita el indicador de acuse pendiente)."""
+def confirmar_acuse(
+    orden_id: int,
+    session: Session = Depends(get_session),
+    usuario: Usuario = Depends(puede_avanzar),
+):
+    """El taller confirma que recibió la orden; queda registrado quién y cuándo."""
     orden = session.get(Orden, orden_id)
     if orden is None:
         raise HTTPException(404, "La orden no existe")
     if orden.acuse_pendiente:
-        orden.acuse_pendiente = False
+        _registrar_acuse(orden, usuario)
         session.commit()
         session.refresh(orden)
     return armar_salida(session, orden)
 
 
-@router.get("/{orden_id}/historial", response_model=list[EtapaRegistrada])
+@router.get("/{orden_id}/historial", response_model=list[EtapaRegistrada], dependencies=[Depends(puede_ver)])
 def historial_de_etapas(orden_id: int, session: Session = Depends(get_session)):
     """Trazabilidad: cada etapa por la que pasó la orden, con quién la registró y cuándo."""
     if session.get(Orden, orden_id) is None:
@@ -248,6 +262,7 @@ def cambiar_etapa(
     datos: CambioEtapaIn,
     session: Session = Depends(get_session),
     enviador: Enviador | None = Depends(get_enviador),
+    usuario: Usuario = Depends(puede_avanzar),
 ):
     """El taller avanza la orden a la etapa siguiente y el cliente recibe el aviso por su canal.
 
@@ -265,16 +280,11 @@ def cambiar_etapa(
         raise HTTPException(
             409, f"La orden está en {orden.etapa_actual}; la etapa siguiente es {esperada}"
         )
-    if datos.usuario_id is not None:
-        usuario = session.get(Usuario, datos.usuario_id)
-        if usuario is None or not usuario.activo:
-            raise HTTPException(404, "El usuario no existe")
-        if usuario.rol not in ROLES_QUE_AVANZAN:
-            raise HTTPException(422, "Solo el taller puede avanzar las etapas")
 
     orden.etapa_actual = datos.etapa
-    orden.acuse_pendiente = False
-    session.add(HistorialEtapa(orden_id=orden.id, etapa=datos.etapa, usuario_id=datos.usuario_id))
+    if orden.acuse_pendiente:
+        _registrar_acuse(orden, usuario)
+    session.add(HistorialEtapa(orden_id=orden.id, etapa=datos.etapa, usuario_id=usuario.id))
     session.commit()
     session.refresh(orden)
 

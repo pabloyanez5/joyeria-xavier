@@ -8,6 +8,7 @@ from app.cache import get_cache
 from app.db import get_session
 from app.main import app
 from app.models import Cliente, HistorialEtapa, Orden, Producto, Usuario
+from tests.conftest import entrar_como
 
 
 @pytest.fixture
@@ -41,7 +42,7 @@ def _crear(api, datos, **extra):
 
 def test_crea_la_orden_y_queda_publicada_en_la_cola_con_acuse_pendiente(api, datos):
     inicio = time.perf_counter()
-    r = _crear(api, datos, usuario_id=datos["asesor"].id)
+    r = _crear(api, datos)
     cola = api.get("/ordenes/cola").json()
     assert time.perf_counter() - inicio <= 3  # criterio de aceptación: ≤ 3 s
     assert r.status_code == 201
@@ -61,7 +62,8 @@ def test_cada_orden_tiene_un_id_unico(api, datos):
 
 
 def test_guarda_el_historial_con_el_asesor(api, session, datos):
-    orden = _crear(api, datos, usuario_id=datos["asesor"].id).json()
+    entrar_como(datos["asesor"])
+    orden = _crear(api, datos).json()
     h = session.scalars(select(HistorialEtapa).where(HistorialEtapa.orden_id == orden["id"])).one()
     assert (h.etapa, h.usuario_id) == ("en_cola", datos["asesor"].id)
 
@@ -74,15 +76,23 @@ def test_se_puede_crear_sin_producto_para_una_joya_a_medida(api, datos):
     assert r.status_code == 201 and r.json()["producto"] is None
 
 
-def test_rechaza_cliente_producto_o_usuario_inexistentes(api, datos):
+def test_rechaza_cliente_o_producto_inexistentes(api, datos):
     assert api.post("/ordenes", json={"cliente_id": 999, "descripcion": "algo"}).status_code == 404
     assert _crear(api, datos, producto_id=999).status_code == 404
-    assert _crear(api, datos, usuario_id=999).status_code == 404
 
 
 def test_solo_un_asesor_puede_crear_ordenes(api, datos):
-    r = _crear(api, datos, usuario_id=datos["taller"].id)
-    assert r.status_code == 422
+    entrar_como(datos["taller"])
+    assert _crear(api, datos).status_code == 403
+    entrar_como(datos["asesor"])
+    assert _crear(api, datos).status_code == 201
+
+
+def test_el_usuario_que_crea_no_se_puede_falsear_desde_el_formulario(api, session, datos):
+    entrar_como(datos["asesor"])
+    orden = _crear(api, datos, usuario_id=datos["taller"].id).json()
+    h = session.scalars(select(HistorialEtapa).where(HistorialEtapa.orden_id == orden["id"])).one()
+    assert h.usuario_id == datos["asesor"].id  # cuenta la sesión, no lo que mande el navegador
 
 
 def test_rechaza_una_descripcion_vacia(api, datos):

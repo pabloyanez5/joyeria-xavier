@@ -29,13 +29,17 @@ class Cliente(Base):
 class Usuario(Base):
     __tablename__ = "usuarios"
     __table_args__ = (
-        CheckConstraint("rol IN ('asesor', 'taller', 'admin')", name="ck_usuarios_rol"),
+        CheckConstraint(
+            "rol IN ('asesor', 'taller', 'direccion', 'admin')", name="ck_usuarios_rol"
+        ),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     nombre: Mapped[str] = mapped_column(String(150))
     email: Mapped[str] = mapped_column(String(200), unique=True)
     rol: Mapped[str] = mapped_column(String(20))
+    # Clave cifrada (PBKDF2); None = el usuario todavía no puede iniciar sesión.
+    clave_hash: Mapped[str | None] = mapped_column(String(255))
     activo: Mapped[bool] = mapped_column(Boolean, default=True)
     creado_en: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
@@ -94,6 +98,8 @@ class Mensaje(Base):
     id_externo: Mapped[str | None] = mapped_column(String(200), unique=True)
     # Quién escribió un mensaje saliente: None = el agente; "asesor" = una persona desde el panel.
     autor: Mapped[str | None] = mapped_column(String(20))
+    # Asesor que escribió el mensaje desde el panel (solo cuando autor = "asesor").
+    usuario_id: Mapped[int | None] = mapped_column(ForeignKey("usuarios.id"))
     # Qué redactó una respuesta del agente: modelo | respaldo | reglas | menu | guardrail.
     origen: Mapped[str | None] = mapped_column(String(20))
     creado_en: Mapped[datetime] = mapped_column(
@@ -152,6 +158,9 @@ class Orden(Base):
         Boolean, default=True, server_default=true()
     )
     publicada_en: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Acuse de recibo del taller: quién lo confirmó y cuándo.
+    acuse_usuario_id: Mapped[int | None] = mapped_column(ForeignKey("usuarios.id"))
+    acuse_en: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     creado_en: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

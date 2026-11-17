@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
+from app.acceso import router as acceso_router
 from app.agente.rutas import get_modelo_chat
 from app.agente.rutas import router as agente_router
 from app.catalogo import router as catalogo_router
@@ -35,6 +36,7 @@ async def ciclo_de_vida(_app: FastAPI):
 
 app = FastAPI(title="Joyería Xavier API", version="0.1.0", lifespan=ciclo_de_vida)
 app.include_router(webhook_router)
+app.include_router(acceso_router)
 app.include_router(catalogo_router)
 app.include_router(contacto_router)
 app.include_router(agente_router)

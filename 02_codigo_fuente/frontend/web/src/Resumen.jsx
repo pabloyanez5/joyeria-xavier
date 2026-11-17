@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { pedir } from './sesion.js'
 import { leer } from './util.js'
 
 const PERIODOS = [
@@ -53,7 +54,7 @@ export default function Resumen() {
   const [error, setError] = useState(null)
 
   const cargar = useCallback(() => {
-    fetch(`/api/metricas?dias=${dias}`)
+    pedir(`/api/metricas?dias=${dias}`)
       .then(leer)
       .then((d) => {
         setDatos(d)

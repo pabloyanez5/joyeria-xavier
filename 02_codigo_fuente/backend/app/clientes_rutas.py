@@ -3,11 +3,15 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.acceso import requiere
 from app.db import get_session
 from app.models import Cliente
 from app.ordenes import nombre_de
 
-router = APIRouter(prefix="/clientes", tags=["clientes"])
+# Los datos de los clientes son solo para el asesor (RNF-09).
+router = APIRouter(
+    prefix="/clientes", tags=["clientes"], dependencies=[Depends(requiere("asesor"))]
+)
 
 
 class ClienteOut(BaseModel):

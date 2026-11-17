@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { pedir } from './sesion.js'
 import { hora, leer } from './util.js'
 
 const ETIQUETA_ESTADO = { activa: 'Atiende el agente', escalada: 'Espera a un asesor', cerrada: 'Cerrada' }
@@ -33,7 +34,7 @@ export default function Conversaciones({ onCrearOrden }) {
   useEffect(() => {
     let vigente = true
     function cargar() {
-      fetch('/api/conversaciones')
+      pedir('/api/conversaciones')
         .then(leer)
         .then((datos) => {
           if (!vigente) return
@@ -54,7 +55,7 @@ export default function Conversaciones({ onCrearOrden }) {
     if (idActual === null) return undefined
     let vigente = true
     function cargar() {
-      fetch(`/api/conversaciones/${idActual}`)
+      pedir(`/api/conversaciones/${idActual}`)
         .then(leer)
         .then((datos) => vigente && setDetalle(datos))
         .catch((e) => vigente && setError(e.message))
@@ -71,7 +72,7 @@ export default function Conversaciones({ onCrearOrden }) {
     setOcupado(true)
     setAviso(null)
     try {
-      const respuesta = await fetch(`/api/conversaciones/${idActual}/${ruta}`, {
+      const respuesta = await pedir(`/api/conversaciones/${idActual}/${ruta}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: cuerpo ? JSON.stringify(cuerpo) : undefined,
@@ -191,6 +192,7 @@ export default function Conversaciones({ onCrearOrden }) {
                       <small className="burbuja-autor">
                         {AUTOR[m.autor]}
                         {m.origen && ORIGEN[m.origen] ? ` · ${ORIGEN[m.origen]}` : ''}
+                        {m.usuario ? ` · ${m.usuario}` : ''}
                       </small>
                       {m.contenido}
                     </p>

@@ -1,12 +1,37 @@
 import { useEffect, useState } from 'react'
+import Acceso from './Acceso.jsx'
 import Conversaciones from './Conversaciones.jsx'
 import Resumen from './Resumen.jsx'
 import Tablero from './Tablero.jsx'
+import { ROL, SESION_CERRADA, pedir, puede, salir, sesionGuardada } from './sesion.js'
 import { leer } from './util.js'
 
 const FORM_VACIO = { clienteId: '', productoId: '', descripcion: '' }
 
+// Cada sección del panel y los roles que la ven (el rol admin ve todas).
+const VISTAS = [
+  { id: 'conversaciones', titulo: 'Conversaciones', roles: ['asesor'] },
+  { id: 'ordenes', titulo: 'Órdenes', roles: ['asesor', 'taller'] },
+  { id: 'resumen', titulo: 'Resumen', roles: ['direccion'] },
+]
+
+// El panel pide iniciar sesión; al cerrarla (o si caduca) vuelve a la pantalla de acceso.
 export default function Panel() {
+  const [sesion, setSesion] = useState(sesionGuardada)
+
+  useEffect(() => {
+    const cerrar = () => setSesion(null)
+    window.addEventListener(SESION_CERRADA, cerrar)
+    return () => window.removeEventListener(SESION_CERRADA, cerrar)
+  }, [])
+
+  if (!sesion) return <Acceso onEntrar={setSesion} />
+  return <PanelInterno key={sesion.usuario.id} usuario={sesion.usuario} />
+}
+
+function PanelInterno({ usuario }) {
+  const vistas = VISTAS.filter((v) => puede(usuario, ...v.roles))
+  const esAsesor = puede(usuario, 'asesor')
   const [clientes, setClientes] = useState([])
   const [productos, setProductos] = useState([])
   const [errorCarga, setErrorCarga] = useState(null)
@@ -14,11 +39,12 @@ export default function Panel() {
   const [form, setForm] = useState(FORM_VACIO)
   const [aviso, setAviso] = useState(null)
   const [enviando, setEnviando] = useState(false)
-  const [vista, setVista] = useState('conversaciones')
+  const [vista, setVista] = useState(vistas[0]?.id ?? null)
 
   useEffect(() => {
+    if (!esAsesor) return // solo el asesor crea órdenes: los demás no necesitan estas listas
     Promise.all([
-      fetch('/api/clientes').then(leer),
+      pedir('/api/clientes').then(leer),
       fetch('/api/productos').then(leer),
     ])
       .then(([c, p]) => {
@@ -27,7 +53,7 @@ export default function Panel() {
         setErrorCarga(null)
       })
       .catch((e) => setErrorCarga(e.message))
-  }, [version])
+  }, [version, esAsesor])
 
   function cambiar(campo) {
     return (e) => setForm((f) => ({ ...f, [campo]: e.target.value }))
@@ -38,7 +64,7 @@ export default function Panel() {
     setEnviando(true)
     setAviso(null)
     try {
-      const orden = await fetch('/api/ordenes', {
+      const orden = await pedir('/api/ordenes', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -68,31 +94,42 @@ export default function Panel() {
   return (
     <main className="pagina">
       <header className="encabezado">
-        <h1>Panel del asesor</h1>
-        <p>Conversaciones y órdenes de producción · Joyería Xavier</p>
+        <h1>Panel interno</h1>
+        <p>Joyería Xavier</p>
+        <p className="sesion-actual">
+          {usuario.nombre} · {ROL[usuario.rol] ?? usuario.rol}{' '}
+          <button type="button" onClick={salir}>
+            Cerrar sesión
+          </button>
+        </p>
       </header>
 
-      <nav className="pestanas" aria-label="Secciones del panel">
-        <button
-          type="button"
-          className={vista === 'conversaciones' ? 'activa' : ''}
-          onClick={() => setVista('conversaciones')}
-        >
-          Conversaciones
-        </button>
-        <button type="button" className={vista === 'ordenes' ? 'activa' : ''} onClick={() => setVista('ordenes')}>
-          Órdenes
-        </button>
-        <button type="button" className={vista === 'resumen' ? 'activa' : ''} onClick={() => setVista('resumen')}>
-          Resumen
-        </button>
-      </nav>
+      {vistas.length === 0 && (
+        <p className="estado error">Tu rol todavía no tiene secciones asignadas en el panel.</p>
+      )}
+
+      {vistas.length > 1 && (
+        <nav className="pestanas" aria-label="Secciones del panel">
+          {vistas.map((v) => (
+            <button
+              key={v.id}
+              type="button"
+              className={vista === v.id ? 'activa' : ''}
+              onClick={() => setVista(v.id)}
+            >
+              {v.titulo}
+            </button>
+          ))}
+        </nav>
+      )}
 
       {vista === 'resumen' && <Resumen />}
 
       {vista === 'conversaciones' && <Conversaciones onCrearOrden={crearDesdeConversacion} />}
 
       {vista === 'ordenes' && (
+        <>
+      {esAsesor && (
         <>
       {errorCarga && <p className="estado error">{errorCarga}</p>}
 
@@ -141,8 +178,10 @@ export default function Panel() {
         </p>
       )}
       {aviso && <p className={`estado ${aviso.tipo === 'error' ? 'error' : 'ok'}`}>{aviso.texto}</p>}
+        </>
+      )}
 
-      <Tablero version={version} />
+      <Tablero version={version} puedeAvanzar={puede(usuario, 'taller')} />
         </>
       )}
     </main>

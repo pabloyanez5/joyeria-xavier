@@ -47,3 +47,40 @@ def sin_esperas_de_red(monkeypatch):
     from app import meta_envio
 
     monkeypatch.setattr(meta_envio.time, "sleep", lambda s: None)
+
+
+class _AdminDePruebas:
+    """Usuario de mentira con todos los permisos, para las pruebas que no tratan del acceso."""
+
+    id = None
+    nombre = "Pruebas"
+    email = "pruebas@joyeria.test"
+    rol = "admin"
+    activo = True
+
+
+@pytest.fixture(autouse=True)
+def sesion_de_pruebas(monkeypatch):
+    """Por defecto las pruebas entran como admin; `entrar_como` cambia de usuario y
+    `sin_sesion` deja el control de acceso real."""
+    from app import acceso
+    from app.main import app
+
+    monkeypatch.setattr(acceso, "ITERACIONES", 1_000)  # el cifrado real tarda; aquí no hace falta
+    app.dependency_overrides[acceso.usuario_actual] = lambda: _AdminDePruebas()
+    yield
+    app.dependency_overrides.pop(acceso.usuario_actual, None)
+
+
+def entrar_como(usuario) -> None:
+    from app import acceso
+    from app.main import app
+
+    app.dependency_overrides[acceso.usuario_actual] = lambda: usuario
+
+
+def sin_sesion() -> None:
+    from app import acceso
+    from app.main import app
+
+    app.dependency_overrides.pop(acceso.usuario_actual, None)
