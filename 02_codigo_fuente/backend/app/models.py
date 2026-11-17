@@ -19,6 +19,9 @@ class Cliente(Base):
     id_canal: Mapped[str] = mapped_column(String(100))
     nombre_perfil: Mapped[str | None] = mapped_column(String(200))
     nombre_preferido: Mapped[str | None] = mapped_column(String(100))
+    # Datos de contacto que confirma el asesor al crear una orden (no los pide el agente).
+    nombre_completo: Mapped[str | None] = mapped_column(String(150))
+    telefono: Mapped[str | None] = mapped_column(String(30))
     talla: Mapped[str | None] = mapped_column(String(20))
     contexto_cualificacion: Mapped[dict | None] = mapped_column(JSON)
     creado_en: Mapped[datetime] = mapped_column(
@@ -144,14 +147,38 @@ class Precio(Base):
     vigente_desde: Mapped[date] = mapped_column(Date)
 
 
+class Pedido(Base):
+    """Agrupa las órdenes que un cliente encarga juntas (una orden por joya)."""
+
+    __tablename__ = "pedidos"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    cliente_id: Mapped[int] = mapped_column(ForeignKey("clientes.id"), index=True)
+    usuario_id: Mapped[int | None] = mapped_column(ForeignKey("usuarios.id"))
+    creado_en: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
 class Orden(Base):
     __tablename__ = "ordenes"
 
     id: Mapped[int] = mapped_column(primary_key=True)
     cliente_id: Mapped[int] = mapped_column(ForeignKey("clientes.id"), index=True)
     producto_id: Mapped[int | None] = mapped_column(ForeignKey("productos.id"))
+    pedido_id: Mapped[int | None] = mapped_column(ForeignKey("pedidos.id"), index=True)
     descripcion: Mapped[str] = mapped_column(Text)
     etapa_actual: Mapped[str] = mapped_column(String(50))
+    # Datos de la orden (RF-03). Son None solo en órdenes anteriores a JOY-79.
+    peso_gramos: Mapped[Decimal | None] = mapped_column(Numeric(8, 2))
+    fecha_entrega_taller: Mapped[date | None] = mapped_column(Date)
+    fecha_entrega_cliente: Mapped[date | None] = mapped_column(Date)
+    total: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
+    abono: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
+    foto_referencia_url: Mapped[str | None] = mapped_column(String(500))
+    # Verificación del abono: quién la registró y cuándo. Recién ahí pasa a la cola del taller.
+    verificada_usuario_id: Mapped[int | None] = mapped_column(ForeignKey("usuarios.id"))
+    verificada_en: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     # Cola del taller: la orden se publica al crearse y queda con el acuse pendiente
     # hasta que el taller confirma que la recibió.
     acuse_pendiente: Mapped[bool] = mapped_column(

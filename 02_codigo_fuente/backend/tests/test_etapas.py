@@ -9,7 +9,7 @@ from app.main import app
 from app.meta_envio import Enviador, ErrorMeta
 from app.models import Cliente, HistorialEtapa, Mensaje, Orden, Usuario
 from app.webhook import get_enviador
-from tests.conftest import entrar_como
+from tests.conftest import datos_de_orden, entrar_como, verificar
 
 
 class EnviadorFalso(Enviador):
@@ -50,9 +50,12 @@ def datos(session):
 
 
 def nueva_orden(api, datos):
-    return api.post(
-        "/ordenes", json={"cliente_id": datos["cliente"].id, "descripcion": "Argollas en oro 18k"}
+    """Una orden ya verificada por el asesor: es la que le llega al taller."""
+    orden = api.post(
+        "/ordenes",
+        json=datos_de_orden(cliente_id=datos["cliente"].id, descripcion="Argollas en oro 18k"),
     ).json()
+    return verificar(api, orden)
 
 
 def avanzar(api, orden, etapa, **extra):
@@ -77,8 +80,10 @@ def test_el_taller_avanza_etapa_por_etapa_hasta_la_entrega(api, session, datos):
         assert r.status_code == 200
         assert r.json()["etapa_actual"] == etapa and r.json()["siguiente_etapa"] == siguiente
     historial = api.get(f"/ordenes/{orden['id']}/historial").json()
-    assert [h["etapa"] for h in historial] == ["en_cola", "en_produccion", "terminada", "entregada"]
-    assert [h["usuario"] for h in historial] == ["Luis", "Marta", "Marta", "Marta"]
+    assert [h["etapa"] for h in historial] == [
+        "por_verificar", "en_cola", "en_produccion", "terminada", "entregada",
+    ]
+    assert [h["usuario"] for h in historial] == ["Luis", "Luis", "Marta", "Marta", "Marta"]
 
 
 def test_salir_de_la_cola_cuenta_como_acuse_del_taller(api, datos):
@@ -195,4 +200,4 @@ def test_el_agente_informa_la_etapa_actual_al_cliente(api, session, cache, datos
     )
     atender_mensaje(session, cache, "whatsapp", "593111", "cómo va mi pedido?", modelo=modelo)
     salida = [m for m in modelo.recibidos[1] if isinstance(m, ToolMessage)][0].content
-    assert orden["codigo"] in salida and "en produccion" in salida
+    assert orden["codigo"] in salida and "en producción" in salida

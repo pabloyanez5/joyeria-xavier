@@ -1,12 +1,11 @@
 import { useEffect, useState } from 'react'
 import Acceso from './Acceso.jsx'
 import Conversaciones from './Conversaciones.jsx'
+import FormularioOrden from './FormularioOrden.jsx'
 import Resumen from './Resumen.jsx'
 import Tablero from './Tablero.jsx'
 import { ROL, SESION_CERRADA, pedir, puede, salir, sesionGuardada } from './sesion.js'
 import { leer } from './util.js'
-
-const FORM_VACIO = { clienteId: '', productoId: '', descripcion: '' }
 
 // Cada sección del panel y los roles que la ven (el rol admin ve todas).
 const VISTAS = [
@@ -36,9 +35,9 @@ function PanelInterno({ usuario }) {
   const [productos, setProductos] = useState([])
   const [errorCarga, setErrorCarga] = useState(null)
   const [version, setVersion] = useState(0)
-  const [form, setForm] = useState(FORM_VACIO)
+  // Datos precargados desde una conversación; `turno` reinicia el formulario al cambiar.
+  const [precarga, setPrecarga] = useState({ turno: 0, inicial: null })
   const [aviso, setAviso] = useState(null)
-  const [enviando, setEnviando] = useState(false)
   const [vista, setVista] = useState(vistas[0]?.id ?? null)
 
   useEffect(() => {
@@ -55,41 +54,20 @@ function PanelInterno({ usuario }) {
       .catch((e) => setErrorCarga(e.message))
   }, [version, esAsesor])
 
-  function cambiar(campo) {
-    return (e) => setForm((f) => ({ ...f, [campo]: e.target.value }))
+  function ordenCreada(texto) {
+    setAviso({ tipo: 'ok', texto })
+    setPrecarga((p) => ({ turno: p.turno + 1, inicial: null }))
+    setVersion((v) => v + 1)
   }
 
-  async function crear(e) {
-    e.preventDefault()
-    setEnviando(true)
-    setAviso(null)
-    try {
-      const orden = await pedir('/api/ordenes', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          cliente_id: Number(form.clienteId),
-          producto_id: form.productoId ? Number(form.productoId) : null,
-          descripcion: form.descripcion,
-        }),
-      }).then(leer)
-      setAviso({ tipo: 'ok', texto: `Orden ${orden.codigo} creada y publicada en la cola del taller.` })
-      setForm(FORM_VACIO)
-      setVersion((v) => v + 1)
-    } catch (error) {
-      setAviso({ tipo: 'error', texto: error.message })
-    } finally {
-      setEnviando(false)
-    }
-  }
-
-  function crearDesdeConversacion(datos) {
-    setForm(datos)
-    setAviso({ tipo: 'ok', texto: 'Datos precargados desde la conversación. Revísalos y crea la orden.' })
+  function crearDesdeConversacion(inicial) {
+    setPrecarga((p) => ({ turno: p.turno + 1, inicial }))
+    setAviso({
+      tipo: 'ok',
+      texto: 'Datos precargados desde la conversación. Complétalos con el cliente y crea la orden.',
+    })
     setVista('ordenes')
   }
-
-  const puedeCrear = form.clienteId && form.descripcion.trim().length >= 3 && !enviando
 
   return (
     <main className="pagina">
@@ -133,44 +111,13 @@ function PanelInterno({ usuario }) {
         <>
       {errorCarga && <p className="estado error">{errorCarga}</p>}
 
-      <form className="filtros orden-form" onSubmit={crear}>
-        <label>
-          Cliente
-          <select value={form.clienteId} onChange={cambiar('clienteId')} required>
-            <option value="">Elige un cliente</option>
-            {clientes.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.nombre} ({c.canal})
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Joya del catálogo (opcional)
-          <select value={form.productoId} onChange={cambiar('productoId')}>
-            <option value="">A medida / sin producto</option>
-            {productos.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.nombre}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="orden-descripcion">
-          Detalle de la orden
-          <textarea
-            rows={3}
-            value={form.descripcion}
-            onChange={cambiar('descripcion')}
-            maxLength={1000}
-            placeholder="Material, quilataje, talla, grabado, fecha de entrega…"
-            required
-          />
-        </label>
-        <button type="submit" disabled={!puedeCrear}>
-          {enviando ? 'Creando…' : 'Crear orden'}
-        </button>
-      </form>
+      <FormularioOrden
+        key={precarga.turno}
+        clientes={clientes}
+        productos={productos}
+        inicial={precarga.inicial}
+        onCreada={ordenCreada}
+      />
 
       {clientes.length === 0 && !errorCarga && (
         <p className="estado">
@@ -181,7 +128,11 @@ function PanelInterno({ usuario }) {
         </>
       )}
 
-      <Tablero version={version} puedeAvanzar={puede(usuario, 'taller')} />
+      <Tablero
+        version={version}
+        puedeAvanzar={puede(usuario, 'taller')}
+        puedeVerificar={esAsesor}
+      />
         </>
       )}
     </main>

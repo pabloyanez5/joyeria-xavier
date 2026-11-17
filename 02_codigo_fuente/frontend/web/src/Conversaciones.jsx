@@ -205,8 +205,7 @@ export default function Conversaciones({ onCrearOrden }) {
                           onClick={() =>
                             onCrearOrden({
                               clienteId: String(d.orden_sugerida.cliente_id),
-                              productoId: '',
-                              descripcion: i.descripcion_de_orden,
+                              descripciones: [i.descripcion_de_orden],
                             })
                           }
                         >
@@ -249,6 +248,20 @@ export default function Conversaciones({ onCrearOrden }) {
                 {aviso && <p className={`estado ${aviso.tipo === 'error' ? 'error' : 'ok'}`}>{aviso.texto}</p>}
 
                 <div className="conv-acciones">
+                  {d.intereses.length > 1 && (
+                    <button
+                      type="button"
+                      className="boton"
+                      onClick={() =>
+                        onCrearOrden({
+                          clienteId: String(d.orden_sugerida.cliente_id),
+                          descripciones: d.intereses.map((i) => i.descripcion_de_orden),
+                        })
+                      }
+                    >
+                      Crear órdenes de todas las joyas
+                    </button>
+                  )}
                   {d.intereses.length === 0 && (
                     <button
                       type="button"
@@ -256,8 +269,7 @@ export default function Conversaciones({ onCrearOrden }) {
                       onClick={() =>
                         onCrearOrden({
                           clienteId: String(d.orden_sugerida.cliente_id),
-                          productoId: '',
-                          descripcion: d.orden_sugerida.descripcion,
+                          descripciones: [d.orden_sugerida.descripcion],
                         })
                       }
                     >

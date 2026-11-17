@@ -8,6 +8,7 @@ from app.cache import get_cache
 from app.db import get_session
 from app.main import app
 from app.models import Cliente, Conversacion, HistorialEtapa, Orden, Usuario
+from tests.conftest import datos_de_orden, verificar
 from app.webhook import get_enviador
 
 
@@ -24,7 +25,7 @@ def test_sin_datos_no_inventa_porcentajes(api):
     r = api.get("/metricas").json()
     assert r["conversaciones"] == 0 and r["tasa_resolucion_agente"] is None
     assert r["horas_promedio_entrega"] is None
-    assert [e["ordenes"] for e in r["ordenes_por_etapa"]] == [0, 0, 0, 0]
+    assert [e["ordenes"] for e in r["ordenes_por_etapa"]] == [0, 0, 0, 0, 0]
     assert len(r["conversaciones_por_dia"]) == 7
 
 
@@ -67,10 +68,13 @@ def test_ordenes_por_etapa_y_tiempo_de_entrega(api, session):
     taller = Usuario(nombre="Marta", email="m@x.com", rol="taller")
     session.add_all([cliente, taller])
     session.commit()
-    ids = [
-        api.post("/ordenes", json={"cliente_id": cliente.id, "descripcion": f"Joya {i}"}).json()["id"]
-        for i in range(3)
+    creadas = [
+        api.post(
+            "/ordenes", json=datos_de_orden(cliente_id=cliente.id, descripcion=f"Joya {i}")
+        ).json()
+        for i in range(4)
     ]
+    ids = [verificar(api, orden)["id"] for orden in creadas[:3]]  # la cuarta queda sin abono
     for etapa in ("en_produccion", "terminada", "entregada"):
         api.post(f"/ordenes/{ids[0]}/etapa", json={"etapa": etapa, "avisar_al_cliente": False})
     api.post(f"/ordenes/{ids[1]}/etapa", json={"etapa": "en_produccion", "avisar_al_cliente": False})
@@ -81,7 +85,7 @@ def test_ordenes_por_etapa_y_tiempo_de_entrega(api, session):
     session.commit()
     r = api.get("/metricas").json()
     assert {e["etapa"]: e["ordenes"] for e in r["ordenes_por_etapa"]} == {
-        "en_cola": 1, "en_produccion": 1, "terminada": 0, "entregada": 1,
+        "por_verificar": 1, "en_cola": 1, "en_produccion": 1, "terminada": 0, "entregada": 1,
     }
-    assert r["ordenes_total"] == 3 and r["ordenes_con_acuse_pendiente"] == 1
+    assert r["ordenes_total"] == 4 and r["ordenes_con_acuse_pendiente"] == 1
     assert r["horas_promedio_entrega"] == 48.0

@@ -720,7 +720,7 @@ a.boton {
 
 .tablero {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 12px;
   align-items: start;
 }
@@ -977,4 +977,105 @@ a.boton {
 
 .interes-titulo button {
   margin-left: auto;
+}
+
+/* Orden completa, pedidos y verificación del abono (JOY-79 y JOY-22) */
+.orden-form {
+  display: grid;
+  gap: 12px;
+  margin: 24px 0;
+}
+
+.orden-form fieldset {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 12px;
+  align-items: end;
+  margin: 0;
+  padding: 14px 16px 16px;
+  background: var(--tarjeta);
+  border: 1px solid var(--linea);
+  border-radius: 12px;
+}
+
+.orden-form legend {
+  padding: 0 6px;
+  font-weight: 600;
+}
+
+.orden-form legend button {
+  margin-left: 10px;
+  font: inherit;
+  font-size: 0.8rem;
+}
+
+.orden-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.85rem;
+  color: var(--suave);
+}
+
+.orden-form input,
+.orden-form select {
+  padding: 8px 10px;
+  font: inherit;
+  color: var(--tinta);
+  background: #fff;
+  border: 1px solid var(--linea);
+  border-radius: 8px;
+}
+
+.orden-acciones {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+.tablero-col.por_verificar {
+  border-top: 3px solid #b5651d;
+}
+
+.tarjeta-pedido {
+  font-weight: 400;
+  color: var(--suave);
+}
+
+.tarjeta-abono {
+  display: grid;
+  gap: 6px;
+}
+
+.tarjeta-abono label {
+  display: grid;
+  gap: 2px;
+  font-size: 0.78rem;
+  color: var(--suave);
+}
+
+.tarjeta-abono input {
+  padding: 6px 8px;
+  font: inherit;
+  border: 1px solid var(--linea);
+  border-radius: 6px;
+}
+
+@media (max-width: 1100px) {
+  .tablero {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 900px) {
+  .tablero {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 560px) {
+  .tablero {
+    grid-template-columns: 1fr;
+  }
 }

@@ -8,7 +8,7 @@ from app.cache import get_cache
 from app.db import get_session
 from app.main import app
 from app.models import Cliente, HistorialEtapa, Orden, Producto, Usuario
-from tests.conftest import entrar_como
+from tests.conftest import datos_de_orden, entrar_como, verificar
 
 
 @pytest.fixture
@@ -31,27 +31,32 @@ def datos(session):
 
 
 def _crear(api, datos, **extra):
-    cuerpo = {
-        "cliente_id": datos["cliente"].id,
-        "producto_id": datos["producto"].id,
-        "descripcion": "Anillo sello en oro 18k, grabado con iniciales A.P.",
-        **extra,
-    }
+    cuerpo = datos_de_orden(
+        **{
+            "cliente_id": datos["cliente"].id,
+            "producto_id": datos["producto"].id,
+            "descripcion": "Anillo sello en oro 18k, grabado con iniciales A.P.",
+            **extra,
+        }
+    )
     return api.post("/ordenes", json=cuerpo)
 
 
-def test_crea_la_orden_y_queda_publicada_en_la_cola_con_acuse_pendiente(api, datos):
+def test_la_orden_nace_por_verificar_y_entra_a_la_cola_al_registrar_el_abono(api, datos):
     inicio = time.perf_counter()
     r = _crear(api, datos)
-    cola = api.get("/ordenes/cola").json()
-    assert time.perf_counter() - inicio <= 3  # criterio de aceptación: ≤ 3 s
     assert r.status_code == 201
     orden = r.json()
     assert orden["codigo"] == f"OP-{orden['id']:06d}"
-    assert orden["etapa_actual"] == "en_cola"
-    assert orden["acuse_pendiente"] is True
-    assert orden["publicada_en"] is not None
+    assert orden["etapa_actual"] == "por_verificar" and orden["publicada_en"] is None
     assert orden["cliente"] == "Ana Pérez" and orden["producto"] == "Anillo sello"
+    assert api.get("/ordenes/cola").json() == []  # al taller todavía no le llega
+
+    orden = verificar(api, orden)
+    cola = api.get("/ordenes/cola").json()
+    assert time.perf_counter() - inicio <= 3  # criterio de aceptación: ≤ 3 s
+    assert orden["etapa_actual"] == "en_cola" and orden["publicada_en"] is not None
+    assert orden["acuse_pendiente"] is True
     assert [o["id"] for o in cola] == [orden["id"]]
     assert cola[0]["acuse_pendiente"] is True
 
@@ -65,19 +70,20 @@ def test_guarda_el_historial_con_el_asesor(api, session, datos):
     entrar_como(datos["asesor"])
     orden = _crear(api, datos).json()
     h = session.scalars(select(HistorialEtapa).where(HistorialEtapa.orden_id == orden["id"])).one()
-    assert (h.etapa, h.usuario_id) == ("en_cola", datos["asesor"].id)
+    assert (h.etapa, h.usuario_id) == ("por_verificar", datos["asesor"].id)
 
 
 def test_se_puede_crear_sin_producto_para_una_joya_a_medida(api, datos):
     r = api.post(
         "/ordenes",
-        json={"cliente_id": datos["cliente"].id, "descripcion": "Dije a medida en plata"},
+        json=datos_de_orden(cliente_id=datos["cliente"].id, descripcion="Dije a medida en plata"),
     )
     assert r.status_code == 201 and r.json()["producto"] is None
 
 
 def test_rechaza_cliente_o_producto_inexistentes(api, datos):
-    assert api.post("/ordenes", json={"cliente_id": 999, "descripcion": "algo"}).status_code == 404
+    sin_cliente = datos_de_orden(cliente_id=999, descripcion="algo")
+    assert api.post("/ordenes", json=sin_cliente).status_code == 404
     assert _crear(api, datos, producto_id=999).status_code == 404
 
 
@@ -102,8 +108,9 @@ def test_rechaza_una_descripcion_vacia(api, datos):
 def test_la_cola_va_de_la_mas_antigua_a_la_mas_nueva_y_solo_trae_las_pendientes_del_taller(
     api, session, datos
 ):
-    primera = _crear(api, datos).json()
-    segunda = _crear(api, datos).json()
+    primera = verificar(api, _crear(api, datos).json())
+    segunda = verificar(api, _crear(api, datos).json())
+    _crear(api, datos)  # sin verificar: no es todavía del taller
     session.add(
         Orden(
             cliente_id=datos["cliente"].id,
@@ -116,7 +123,7 @@ def test_la_cola_va_de_la_mas_antigua_a_la_mas_nueva_y_solo_trae_las_pendientes_
 
 
 def test_el_taller_confirma_el_acuse(api, datos):
-    orden = _crear(api, datos).json()
+    orden = verificar(api, _crear(api, datos).json())
     r = api.post(f"/ordenes/{orden['id']}/acuse")
     assert r.status_code == 200 and r.json()["acuse_pendiente"] is False
     assert api.post(f"/ordenes/{orden['id']}/acuse").json()["acuse_pendiente"] is False

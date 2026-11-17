@@ -103,7 +103,9 @@ def metricas(
     )
     ordenes_por_etapa = [EtapaConteo(etapa=e, ordenes=conteo.get(e, 0)) for e in ETAPAS]
     pendientes = session.scalar(
-        select(func.count()).select_from(Orden).where(Orden.acuse_pendiente.is_(True))
+        select(func.count())
+        .select_from(Orden)
+        .where(Orden.acuse_pendiente.is_(True), Orden.etapa_actual == "en_cola")
     )
 
     entregas = session.execute(
