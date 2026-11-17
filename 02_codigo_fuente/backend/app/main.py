@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from app.acceso import router as acceso_router
+from app import bitacora
 from app.agente.rutas import get_modelo_chat
 from app.agente.rutas import router as agente_router
 from app.catalogo import router as catalogo_router
@@ -15,6 +16,7 @@ from app.metricas import router as metricas_router
 from app.ordenes import router as ordenes_router
 from app.webhook import router as webhook_router
 
+bitacora.configurar()
 logger = logging.getLogger("joyeria.main")
 
 

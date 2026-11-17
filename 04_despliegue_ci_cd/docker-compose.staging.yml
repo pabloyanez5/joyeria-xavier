@@ -57,6 +57,10 @@ services:
       JOYERIA_WHATSAPP: ${JOYERIA_WHATSAPP:-}
       JOYERIA_INSTAGRAM: ${JOYERIA_INSTAGRAM:-}
       JOYERIA_MESSENGER: ${JOYERIA_MESSENGER:-}
+      LOG_DIR: /app/logs
+    volumes:
+      # La bitácora sobrevive a cada deploy (los logs de Docker se borran al recrear el contenedor).
+      - api_logs:/app/logs
     depends_on:
       db:
         condition: service_healthy
@@ -84,3 +88,4 @@ services:
 
 volumes:
   pgdata:
+  api_logs:

@@ -11,6 +11,7 @@ from app.agente import contexto as ctx
 from app.agente import estado_ordenes, intereses, menu
 from app.agente.intenciones import clasificar
 from app.agente.llm import ProveedorLLM
+from app.bitacora import sin_claves
 from app.cache import CacheIdentidad
 from app.clientes import identificar_cliente
 from app.mensajes import Saliente
@@ -237,8 +238,13 @@ def atender_mensaje(
                 resultado_lc = lc_agente.responder(
                     session, modelo, cliente, conversacion.id, texto, entrante.id
                 )
-            except Exception:
-                logger.exception("El agente LangChain falló; se responde con el motor de reglas")
+            except Exception as error:
+                logger.error(
+                    "El agente LangChain falló (%s: %s); se responde con el motor de reglas",
+                    type(error).__name__,
+                    sin_claves(str(error))[:300],
+                    exc_info=True,
+                )
         if resultado_lc is not None:
             intencion = resultado_lc.herramientas[0] if resultado_lc.herramientas else "conversacion"
             detectadas = list(resultado_lc.herramientas)
