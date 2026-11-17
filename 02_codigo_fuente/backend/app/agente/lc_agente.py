@@ -26,6 +26,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.agente import estado_ordenes, intereses, menu, seguridad
+from app.bitacora import sin_claves
 from app.catalogo import precios_vigentes
 from app.clientes import nombre_para_saludar, primer_nombre
 from app.contacto import armar_canales
@@ -428,7 +429,9 @@ def _invocar(principal, respaldo, mensajes: list[BaseMessage], estado: _Estado):
         if respaldo is None:
             raise
         logger.warning(
-            "El modelo principal falló (%s); contesta el de respaldo", type(error).__name__
+            "El modelo principal falló (%s: %s); contesta el de respaldo",
+            type(error).__name__,
+            sin_claves(str(error))[:300],
         )
         estado.origen = "respaldo"
         try:
@@ -527,6 +530,12 @@ def responder(
             mensajes.pop()
         mensajes.append(HumanMessage(AVISO_RESPUESTA_VACIA))
         respuesta = _a_texto(_invocar(modelo, respaldo, mensajes, estado).content).strip()
+    if not respuesta and respaldo is not None:
+        # El principal volvió a callar: antes esto terminaba en el motor de reglas aunque el de
+        # respaldo estuviera disponible.
+        logger.warning("El modelo volvió a responder vacío; se le pide al de respaldo")
+        estado.origen = "respaldo"
+        respuesta = _a_texto(respaldo.invoke(mensajes).content).strip()
     if not respuesta:
         raise ValueError("El modelo no produjo una respuesta de texto")
     respuesta = sanear_enlaces(respuesta, _enlaces_de(mensajes))

@@ -12,7 +12,8 @@ COPY alembic.ini .
 COPY migrations ./migrations
 COPY app ./app
 
-RUN useradd --create-home appuser && chown -R appuser /app
+# /app/logs: la bitácora persistente (volumen api_logs en staging).
+RUN useradd --create-home appuser && mkdir -p /app/logs && chown -R appuser /app
 USER appuser
 
 EXPOSE 8000
