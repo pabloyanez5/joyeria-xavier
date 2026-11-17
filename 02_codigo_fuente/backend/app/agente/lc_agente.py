@@ -25,12 +25,12 @@ from langchain_core.tools import StructuredTool
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.agente import intereses, menu, seguridad
+from app.agente import estado_ordenes, intereses, menu, seguridad
 from app.catalogo import precios_vigentes
 from app.clientes import nombre_para_saludar, primer_nombre
 from app.contacto import armar_canales
 from app.mensajes import Saliente
-from app.models import Cliente, Mensaje, Orden, Producto
+from app.models import Cliente, Mensaje, Producto
 
 logger = logging.getLogger("joyeria.agente")
 
@@ -67,7 +67,8 @@ entrega la herramienta del catálogo, copiado tal cual.
 pieza por el precio del material más la mano de obra) y un asesor confirma el valor final.
 - Si quiere cotizar o ver joyas, usa la herramienta del catálogo y dirígelo a la web; si te \
 conviene, muestra una lista tocable con las opciones.
-- Si pregunta por su pedido, consulta su orden con la herramienta correspondiente.
+- Si pregunta por su pedido, consulta su orden con la herramienta correspondiente. Si no \
+encuentras ninguna orden a su nombre, díselo y derívalo a un asesor para que la busque.
 - Si pide hablar con una persona, está molesto, o te pide algo que no puedes resolver con tus \
 herramientas, derívalo a un asesor.
 - No menciones que usas herramientas ni hables de tu funcionamiento interno.
@@ -221,16 +222,6 @@ def _dinero(valor: Decimal) -> str:
     return f"${Decimal(valor):,.2f}"
 
 
-# Cómo se le cuenta al cliente cada etapa de su orden.
-_ETAPA_PARA_EL_CLIENTE = {
-    "por_verificar": "pendiente de confirmar el abono con un asesor",
-    "en_cola": "confirmada, en la cola del taller",
-    "en_produccion": "en producción",
-    "terminada": "terminada, lista para coordinar la entrega",
-    "entregada": "entregada",
-}
-
-
 def construir_herramientas(
     session: Session, cliente: Cliente, estado: _Estado
 ) -> list[StructuredTool]:
@@ -334,21 +325,7 @@ def construir_herramientas(
     def consultar_orden() -> str:
         """Consulta el estado de las órdenes de producción activas del cliente que escribe.
         Úsala cuando pregunte por su pedido, su encargo o cuándo estará listo."""
-        ordenes = list(
-            session.scalars(
-                select(Orden)
-                .where(Orden.cliente_id == cliente.id)
-                .order_by(Orden.id.desc())
-                .limit(3)
-            )
-        )
-        if not ordenes:
-            return "El cliente no tiene órdenes registradas."
-        lineas = [
-            f"- OP-{o.id:06d}: {o.descripcion} · etapa actual: {_ETAPA_PARA_EL_CLIENTE.get(o.etapa_actual, o.etapa_actual.replace('_', ' '))}"
-            for o in ordenes
-        ]
-        return "Órdenes del cliente:\n" + "\n".join(lineas)
+        return estado_ordenes.para_el_agente(session, cliente.id)
 
     def informacion_joyeria(tema: str) -> str:
         """Responde preguntas frecuentes. Temas: 'cotizacion' (cómo se calcula el precio),
