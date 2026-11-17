@@ -8,10 +8,12 @@ const PERIODOS = [
   { dias: 90, texto: '90 días' },
 ]
 const NOMBRE_ETAPA = {
+  por_verificar: 'Por verificar',
   en_cola: 'En cola',
   en_produccion: 'En producción',
   terminada: 'Terminada',
   entregada: 'Entregada',
+  cancelada: 'Canceladas',
 }
 const NOMBRE_MENSAJE = { cliente: 'Clientes', agente: 'Agente', asesor: 'Asesor', sistema: 'Avisos del sistema' }
 

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import GestionOrden from './GestionOrden.jsx'
 import { pedir } from './sesion.js'
 import { hora, leer } from './util.js'
 
@@ -8,8 +9,17 @@ const COLUMNAS = [
   { etapa: 'en_produccion', titulo: 'En producción' },
   { etapa: 'terminada', titulo: 'Terminada' },
   { etapa: 'entregada', titulo: 'Entregada' },
+  // Las canceladas no son una etapa del proceso: su columna aparece solo si hay alguna (JOY-23).
+  { etapa: 'cancelada', titulo: 'Cancelada', soloSiHay: true },
 ]
 const NOMBRE = Object.fromEntries(COLUMNAS.map((c) => [c.etapa, c.titulo]))
+const nombreEtapa = (etapa) => NOMBRE[etapa] ?? etapa
+// Cómo se lee en el historial lo que no es un avance normal.
+const TITULO_CAMBIO = {
+  modificacion: () => 'Datos modificados',
+  retroceso: (p) => `Devuelta a ${nombreEtapa(p.etapa).toLowerCase()}`,
+  cancelacion: () => 'Cancelada',
+}
 
 const formatoDolar = new Intl.NumberFormat('es-EC', { style: 'currency', currency: 'USD' })
 const dinero = (valor) => formatoDolar.format(Number(valor))
@@ -37,19 +47,20 @@ function Historial({ orden }) {
       .then(leer)
       .then(setPasos)
       .catch((e) => setError(e.message))
-  }, [orden.id, orden.etapa_actual])
+  }, [orden.id, orden.etapa_actual, orden.ultimo_cambio])
 
   if (error) return <p className="estado error">{error}</p>
   if (!pasos) return <small>Cargando historial…</small>
   return (
     <ol className="historial">
       {pasos.map((p, n) => (
-        <li key={n}>
-          <strong>{NOMBRE[p.etapa] ?? p.etapa}</strong>
+        <li key={n} className={p.tipo && p.tipo !== 'etapa' ? `cambio ${p.tipo}` : undefined}>
+          <strong>{TITULO_CAMBIO[p.tipo]?.(p) ?? nombreEtapa(p.etapa)}</strong>
           <small>
             {hora(p.creado_en)}
             {p.usuario ? ` · ${p.usuario}` : ''}
           </small>
+          {p.nota && <small className="historial-nota">{p.nota}</small>}
         </li>
       ))}
     </ol>
@@ -75,6 +86,8 @@ export default function Tablero({ version, onCambio, puedeAvanzar = false, puede
   const [abiertas, setAbiertas] = useState({}) // órdenes con el historial desplegado
   const consulta = consultaDe(filtros)
   const filtrando = consulta !== ''
+  const hayCanceladas = ordenes.some((o) => o.etapa_actual === 'cancelada')
+  const visibles = COLUMNAS.filter((c) => !c.soloSiHay || hayCanceladas)
 
   const cargar = useCallback(() => {
     pedir(`/api/ordenes${consulta}`)
@@ -137,6 +150,26 @@ export default function Tablero({ version, onCambio, puedeAvanzar = false, puede
     } finally {
       setOcupada(null)
     }
+  }
+
+  function gestionada(modo, r) {
+    if (modo === 'modificar') {
+      const taller = r.acuse_pendiente && r.etapa_actual !== 'por_verificar'
+      setAviso({
+        tipo: 'ok',
+        texto: `${r.codigo} modificada.` + (taller ? ' El taller debe confirmar que vio el cambio.' : ''),
+      })
+    } else if (modo === 'retroceder') {
+      setAviso({ tipo: 'ok', texto: `${r.codigo} volvió a «${nombreEtapa(r.etapa_actual)}».` })
+    } else {
+      const texto = r.aviso_al_cliente === 'enviado' ? TEXTO_AVISO.enviado : (r.detalle_aviso ?? '')
+      setAviso({
+        tipo: r.aviso_al_cliente === 'no_enviado' ? 'error' : 'ok',
+        texto: `${r.codigo} cancelada. ${texto}`,
+      })
+    }
+    cargar()
+    onCambio?.()
   }
 
   async function darAcuse(orden) {
@@ -206,8 +239,8 @@ export default function Tablero({ version, onCambio, puedeAvanzar = false, puede
       {error && <p className="estado error">{error}</p>}
       {aviso && <p className={`estado ${aviso.tipo === 'error' ? 'error' : 'ok'}`}>{aviso.texto}</p>}
 
-      <div className="tablero">
-        {COLUMNAS.map(({ etapa, titulo }) => {
+      <div className={`tablero ${hayCanceladas ? 'con-canceladas' : ''}`}>
+        {visibles.map(({ etapa, titulo }) => {
           const tarjetas = ordenes.filter((o) => o.etapa_actual === etapa)
           return (
             <div key={etapa} className={`tablero-col ${etapa}`}>
@@ -279,6 +312,7 @@ export default function Tablero({ version, onCambio, puedeAvanzar = false, puede
                   >
                     {abiertas[o.id] ? 'Ocultar historial' : 'Ver historial'}
                   </button>
+                  {o.ultimo_cambio && <small className="tarjeta-cambio">{o.ultimo_cambio}</small>}
                   {abiertas[o.id] && <Historial orden={o} />}
                   {o.acuse_por && (
                     <small>
@@ -294,6 +328,9 @@ export default function Tablero({ version, onCambio, puedeAvanzar = false, puede
                     >
                       {ocupada === o.id ? 'Avanzando…' : `Pasar a ${NOMBRE[o.siguiente_etapa].toLowerCase()}`}
                     </button>
+                  )}
+                  {puedeVerificar && (
+                    <GestionOrden orden={o} avisar={avisar} nombreEtapa={nombreEtapa} onHecho={gestionada} />
                   )}
                 </article>
               ))}

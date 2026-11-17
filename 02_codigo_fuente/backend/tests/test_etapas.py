@@ -168,9 +168,9 @@ def test_sin_envio_configurado_o_en_canal_no_soportado_no_falla(api, datos):
 
 
 def test_cada_etapa_tiene_su_aviso():
-    from app.ordenes import AVISOS_AL_CLIENTE, ETAPAS
+    from app.ordenes import AVISOS_AL_CLIENTE, CANCELADA, ETAPAS
 
-    assert set(AVISOS_AL_CLIENTE) == set(ETAPAS[1:])
+    assert set(AVISOS_AL_CLIENTE) == {*ETAPAS[1:], CANCELADA}
 
 
 def test_lista_de_ordenes_con_filtro_por_etapa(api, datos):

@@ -25,7 +25,7 @@ def test_sin_datos_no_inventa_porcentajes(api):
     r = api.get("/metricas").json()
     assert r["conversaciones"] == 0 and r["tasa_resolucion_agente"] is None
     assert r["horas_promedio_entrega"] is None
-    assert [e["ordenes"] for e in r["ordenes_por_etapa"]] == [0, 0, 0, 0, 0]
+    assert [e["ordenes"] for e in r["ordenes_por_etapa"]] == [0, 0, 0, 0, 0, 0]
     assert len(r["conversaciones_por_dia"]) == 7
 
 
@@ -86,6 +86,7 @@ def test_ordenes_por_etapa_y_tiempo_de_entrega(api, session):
     r = api.get("/metricas").json()
     assert {e["etapa"]: e["ordenes"] for e in r["ordenes_por_etapa"]} == {
         "por_verificar": 1, "en_cola": 1, "en_produccion": 1, "terminada": 0, "entregada": 1,
+        "cancelada": 0,
     }
     assert r["ordenes_total"] == 4 and r["ordenes_con_acuse_pendiente"] == 1
     assert r["horas_promedio_entrega"] == 48.0

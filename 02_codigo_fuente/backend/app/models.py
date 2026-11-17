@@ -203,6 +203,10 @@ class HistorialEtapa(Base):
     orden_id: Mapped[int] = mapped_column(ForeignKey("ordenes.id"), index=True)
     etapa: Mapped[str] = mapped_column(String(50))
     usuario_id: Mapped[int | None] = mapped_column(ForeignKey("usuarios.id"))
+    # etapa (avance normal) | modificacion | retroceso | cancelacion (JOY-23)
+    tipo: Mapped[str] = mapped_column(String(20), default="etapa", server_default="etapa")
+    # Qué cambió y por qué (obligatorio en modificaciones, retrocesos y cancelaciones).
+    nota: Mapped[str | None] = mapped_column(Text)
     creado_en: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
