@@ -55,6 +55,27 @@ def _igual(a: str | None, b: str | None) -> bool:
     return bool(a) and bool(b) and str(a).strip().casefold() == str(b).strip().casefold()
 
 
+def _solo_categoria(interes: dict, categoria: str | None) -> bool:
+    """Un interés del que solo se sabe la categoría (todavía sin material, talla, etc.)."""
+    return set(interes) <= {"categoria"} and _igual(interes.get("categoria"), categoria)
+
+
+def _sin_repetidas(intereses: list[dict], indice: int) -> int:
+    """Quita las joyas sin datos que repiten la categoría de otra. Devuelve el índice activo."""
+    for n in reversed(range(len(intereses))):
+        if n == indice or not intereses[n].get("categoria"):
+            continue
+        repetida = any(
+            m != n and _igual(otra.get("categoria"), intereses[n]["categoria"])
+            for m, otra in enumerate(intereses)
+        )
+        if repetida and _solo_categoria(intereses[n], intereses[n]["categoria"]):
+            del intereses[n]
+            if n < indice:
+                indice -= 1
+    return indice
+
+
 def anotar(contexto: dict | None, otra_joya: bool = False, **datos) -> dict:
     """Devuelve el contexto con los datos puestos en el interés que corresponde.
 
@@ -70,6 +91,17 @@ def anotar(contexto: dict | None, otra_joya: bool = False, **datos) -> dict:
     indice = indice_activo(contexto)
 
     categoria = datos.get("categoria")
+    if otra_joya and categoria:
+        # "Otra joya" de una categoría que acaba de mencionar y aún no tiene datos es esa misma:
+        # se completa en lugar de repetirla (pasaba cuando decía "también quiero una cadena").
+        sin_datos = next(
+            (n for n, i in enumerate(intereses) if _solo_categoria(i, categoria)), None
+        )
+        if sin_datos is not None:
+            otra_joya = False
+            indice = sin_datos
+            datos.pop("categoria")
+            categoria = None
     if otra_joya:
         indice = None
     elif categoria:
@@ -85,6 +117,7 @@ def anotar(contexto: dict | None, otra_joya: bool = False, **datos) -> dict:
         intereses.append({})
         indice = len(intereses) - 1
     intereses[indice].update(datos)
+    indice = _sin_repetidas(intereses, indice)
 
     contexto["intereses"] = intereses
     contexto["activo"] = indice
