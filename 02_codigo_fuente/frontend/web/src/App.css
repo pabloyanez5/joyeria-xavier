@@ -1079,3 +1079,11 @@ a.boton {
     grid-template-columns: 1fr;
   }
 }
+
+.ficha-cabecera {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}

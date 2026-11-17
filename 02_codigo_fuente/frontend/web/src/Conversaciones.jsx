@@ -185,7 +185,23 @@ export default function Conversaciones({ onCrearOrden }) {
                 )}
 
                 <section className="ficha" aria-label="Ficha de contexto">
-                  <h4>Ficha de contexto</h4>
+                  <div className="ficha-cabecera">
+                    <h4>Ficha de contexto</h4>
+                    {d.intereses.length > 1 && (
+                      <button
+                        type="button"
+                        className="boton primario"
+                        onClick={() =>
+                          onCrearOrden({
+                            clienteId: String(d.orden_sugerida.cliente_id),
+                            descripciones: d.intereses.map((i) => i.descripcion_de_orden),
+                          })
+                        }
+                      >
+                        Crear un pedido con las {d.intereses.length} joyas
+                      </button>
+                    )}
+                  </div>
                   <Datos items={d.datos_del_cliente} />
                   {d.intereses.length === 0 && (
                     <p className="nota">El agente todavía no anotó ninguna joya.</p>
@@ -248,20 +264,6 @@ export default function Conversaciones({ onCrearOrden }) {
                 {aviso && <p className={`estado ${aviso.tipo === 'error' ? 'error' : 'ok'}`}>{aviso.texto}</p>}
 
                 <div className="conv-acciones">
-                  {d.intereses.length > 1 && (
-                    <button
-                      type="button"
-                      className="boton"
-                      onClick={() =>
-                        onCrearOrden({
-                          clienteId: String(d.orden_sugerida.cliente_id),
-                          descripciones: d.intereses.map((i) => i.descripcion_de_orden),
-                        })
-                      }
-                    >
-                      Crear órdenes de todas las joyas
-                    </button>
-                  )}
                   {d.intereses.length === 0 && (
                     <button
                       type="button"
