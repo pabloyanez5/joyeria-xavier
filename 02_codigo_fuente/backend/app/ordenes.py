@@ -20,6 +20,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.acceso import requiere
+from app.agente import intereses
 from app.db import get_session
 from app.meta_envio import Enviador, ErrorMeta
 from app.models import (
@@ -96,6 +97,8 @@ class JoyaIn(BaseModel):
     total: Dinero = Field(gt=0, max_digits=10, decimal_places=2)
     abono: Dinero = Field(default=Decimal("0"), ge=0, max_digits=10, decimal_places=2)
     foto_referencia_url: str | None = Field(None, max_length=500)
+    # Número de la joya en la ficha del cliente de la que sale esta orden (se marca como pedida).
+    interes: int | None = Field(None, ge=1, le=intereses.MAXIMO)
 
     @field_validator("descripcion")
     @classmethod
@@ -305,6 +308,16 @@ def _nueva_orden(
     return orden
 
 
+def _marcar_en_la_ficha(cliente: Cliente, creadas: list[tuple[JoyaIn, Orden]]) -> None:
+    """Las joyas de la ficha que ya tienen orden dejan de ofrecerse para crear otra."""
+    pedidas = {joya.interes: orden.id for joya, orden in creadas if joya.interes}
+    if pedidas:
+        # Se reasigna un dict nuevo para que SQLAlchemy detecte el cambio en el JSON.
+        cliente.contexto_cualificacion = intereses.marcar_pedidas(
+            cliente.contexto_cualificacion, pedidas
+        )
+
+
 @router.post("", response_model=OrdenOut, status_code=201)
 def crear_orden(
     datos: OrdenIn,
@@ -314,6 +327,7 @@ def crear_orden(
     """Crea la orden de una joya. Queda por verificar hasta que se registre el abono."""
     cliente = _cliente_con_contacto(session, datos)
     orden = _nueva_orden(session, cliente, datos, usuario, None)
+    _marcar_en_la_ficha(cliente, [(datos, orden)])
     session.commit()
     session.refresh(orden)
     return armar_salida(session, orden)
@@ -331,6 +345,7 @@ def crear_pedido(
     session.add(pedido)
     session.flush()
     ordenes = [_nueva_orden(session, cliente, joya, usuario, pedido) for joya in datos.joyas]
+    _marcar_en_la_ficha(cliente, list(zip(datos.joyas, ordenes)))
     session.commit()
     return _pedido_out(session, pedido, ordenes)
 

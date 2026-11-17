@@ -9,6 +9,9 @@ presupuesto de la cadena terminaba en los aretes). Ahora el contexto del cliente
 
 La copia del interés activo mantiene funcionando lo que ya leía esas claves (el enlace al
 catálogo, el motor de reglas y el menú).
+
+Cuando el asesor crea la orden de una joya, el interés guarda "orden_id": esa joya ya está
+pedida, y si el cliente vuelve a pedir una de la misma categoría se abre un interés nuevo.
 """
 
 # Datos propios de cada joya.
@@ -51,6 +54,11 @@ def activo(contexto: dict | None) -> dict | None:
     return lista(contexto)[indice] if indice is not None else None
 
 
+def con_orden(interes: dict) -> bool:
+    """La joya ya tiene su orden de producción."""
+    return bool(interes.get("orden_id"))
+
+
 def _igual(a: str | None, b: str | None) -> bool:
     return bool(a) and bool(b) and str(a).strip().casefold() == str(b).strip().casefold()
 
@@ -65,8 +73,11 @@ def _sin_repetidas(intereses: list[dict], indice: int) -> int:
     for n in reversed(range(len(intereses))):
         if n == indice or not intereses[n].get("categoria"):
             continue
+        # Una joya ya pedida no cuenta: otra de esa categoría es un pedido nuevo.
         repetida = any(
-            m != n and _igual(otra.get("categoria"), intereses[n]["categoria"])
+            m != n
+            and not con_orden(otra)
+            and _igual(otra.get("categoria"), intereses[n]["categoria"])
             for m, otra in enumerate(intereses)
         )
         if repetida and _solo_categoria(intereses[n], intereses[n]["categoria"]):
@@ -108,14 +119,20 @@ def anotar(contexto: dict | None, otra_joya: bool = False, **datos) -> dict:
     if otra_joya:
         indice = None
     elif categoria:
-        iguales = [n for n, i in enumerate(intereses) if _igual(i.get("categoria"), categoria)]
+        iguales = [
+            n
+            for n, i in enumerate(intereses)
+            if not con_orden(i) and _igual(i.get("categoria"), categoria)
+        ]
         # Si hubiera más de una de esa categoría, se retoma la que tiene más datos.
         mismo = max(iguales, key=lambda n: len(intereses[n])) if iguales else None
         if mismo is not None:
             indice = mismo
             datos.pop("categoria")  # se conserva como ya estaba escrita
-        elif indice is not None and intereses[indice].get("categoria"):
-            indice = None  # el interés activo es de otra joya: este va aparte
+        elif indice is not None and (
+            intereses[indice].get("categoria") or con_orden(intereses[indice])
+        ):
+            indice = None  # el interés activo es de otra joya (o ya está pedida): este va aparte
     if indice is None:
         if len(intereses) >= MAXIMO:
             return contexto
@@ -131,6 +148,19 @@ def anotar(contexto: dict | None, otra_joya: bool = False, **datos) -> dict:
             contexto[campo] = intereses[indice][campo]
         else:
             contexto.pop(campo, None)
+    return contexto
+
+
+def marcar_pedidas(contexto: dict | None, pedidas: dict[int, int]) -> dict:
+    """Anota la orden creada para cada interés. `pedidas` es {número de interés (desde 1): id
+    de la orden}. Un número que no existe se ignora."""
+    contexto = dict(contexto or {})
+    guardados = lista(contexto)
+    for numero, orden_id in pedidas.items():
+        if 1 <= numero <= len(guardados):
+            guardados[numero - 1]["orden_id"] = orden_id
+    if guardados:
+        contexto["intereses"] = guardados
     return contexto
 
 
@@ -157,5 +187,7 @@ def resumen(contexto: dict | None) -> str:
     lineas = []
     for n, interes in enumerate(intereses):
         marca = " (de esta se está hablando)" if n == actual and len(intereses) > 1 else ""
+        if con_orden(interes):
+            marca += f" (ya tiene su orden OP-{int(interes['orden_id']):06d})"
         lineas.append(f"{n + 1}. {describir(interes) or 'sin datos'}{marca}")
     return "\n".join(lineas)
