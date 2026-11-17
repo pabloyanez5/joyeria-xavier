@@ -5,6 +5,7 @@ from sqlalchemy import select
 from app.agente import contexto as ctx
 from app.agente.llm import ErrorLLM, ProveedorLLM
 from app.agente.rutas import get_proveedor
+from app.agente import intereses
 from app.agente.servicio import atender_mensaje, enlace_catalogo
 from app.cache import get_cache
 from app.db import get_session
@@ -71,7 +72,9 @@ def test_recuerda_lo_que_dice_el_cliente_y_lo_usa_despues(session, cache, monkey
     cliente = session.scalars(select(Cliente)).one()
     assert cliente.nombre_preferido == "Luis"
     assert cliente.talla == "9"
-    assert cliente.contexto_cualificacion == {"categoria": "Anillos", "material": "plata"}
+    assert intereses.lista(cliente.contexto_cualificacion) == [
+        {"categoria": "Anillos", "material": "plata", "talla": "9"}
+    ]
     r = _enviar(session, cache, "cuánto cuesta?")
     assert "categoria=Anillos" in r.texto and "material=plata" in r.texto
     assert "Luis" in r.texto
@@ -90,9 +93,9 @@ def test_el_contexto_se_acumula_sin_perder_lo_anterior(session, cache):
     _enviar(session, cache, "quiero una cadena")
     _enviar(session, cache, "de oro 18k")
     cliente = session.scalars(select(Cliente)).one()
-    assert cliente.contexto_cualificacion == {
-        "categoria": "Cadenas", "material": "oro", "quilataje": "18k"
-    }
+    assert intereses.lista(cliente.contexto_cualificacion) == [
+        {"categoria": "Cadenas", "material": "oro", "quilataje": "18k"}
+    ]
 
 
 def test_pedir_asesor_escala_y_luego_el_agente_calla(session, cache):

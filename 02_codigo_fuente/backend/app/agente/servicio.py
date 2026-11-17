@@ -8,7 +8,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.agente import contexto as ctx
-from app.agente import menu
+from app.agente import intereses, menu
 from app.agente.intenciones import clasificar
 from app.agente.llm import ProveedorLLM
 from app.cache import CacheIdentidad
@@ -139,17 +139,39 @@ def _conversacion_abierta(session: Session, cliente: Cliente, canal: str) -> Con
     return conversacion
 
 
+# Qué quiso el cliente, dicho como lo lee el asesor en la ficha. La primera que coincida gana:
+# pedir una persona pesa más que haber mirado el catálogo en el mismo mensaje.
+INTENCIONES_DE_LA_FICHA = (
+    (("asesor", "derivar_a_asesor"), "Hablar con un asesor"),
+    (("estado_pedido", "consultar_orden"), "Consultar el estado de su pedido"),
+    (("cotizar",), "Cotizar una joya"),
+    (("catalogo", "consultar_catalogo", "mostrar_opciones", "menu"), "Ver el catálogo o cotizar"),
+    (("informacion_joyeria",), "Pregunta sobre la joyería"),
+)
+
+
+def _anotar_intencion(cliente: Cliente, detectadas: list[str]) -> None:
+    """Guarda la última intención reconocible; un saludo o una charla no borran la anterior."""
+    for claves, etiqueta in INTENCIONES_DE_LA_FICHA:
+        if any(d in claves for d in detectadas):
+            cliente.contexto_cualificacion = {
+                **(cliente.contexto_cualificacion or {}),
+                "intencion": etiqueta,
+            }
+            return
+
+
 def _recordar(cliente: Cliente, datos: ctx.Datos) -> None:
     if datos.nombre:
         cliente.nombre_preferido = datos.nombre
     if datos.talla:
         cliente.talla = datos.talla
-    if datos.contexto:
-        # Se reasigna un dict nuevo para que SQLAlchemy detecte el cambio en el JSON.
-        cliente.contexto_cualificacion = {
-            **(cliente.contexto_cualificacion or {}),
-            **datos.contexto,
-        }
+    if datos.contexto or datos.talla:
+        # Cada joya que menciona es un interés aparte (JOY-80). Se reasigna un dict nuevo para
+        # que SQLAlchemy detecte el cambio en el JSON.
+        cliente.contexto_cualificacion = intereses.anotar(
+            cliente.contexto_cualificacion, talla=datos.talla, **datos.contexto
+        )
 
 
 def atender_mensaje(
@@ -194,14 +216,14 @@ def atender_mensaje(
             None, None, conversacion.id, cliente.id, escalada=True, cliente_nuevo=creado
         )
 
+    detectadas: list[str] = []
     if accion:
         # El cliente tocó un botón o una opción de una lista: no hay texto que interpretar.
-        categoria = menu.categoria_de_accion(accion)
-        if categoria:
-            cliente.contexto_cualificacion = {
-                **(cliente.contexto_cualificacion or {}),
-                "categoria": categoria,
-            }
+        elegido = menu.interes_de_accion(session, accion)
+        if elegido:
+            cliente.contexto_cualificacion = intereses.anotar(
+                cliente.contexto_cualificacion, **elegido
+            )
         mensajes, escalar = menu.responder_accion(session, accion, url_web(), url_media())
         intencion = "menu"
         origen = "menu"
@@ -220,6 +242,7 @@ def atender_mensaje(
                 logger.exception("El agente LangChain falló; se responde con el motor de reglas")
         if resultado_lc is not None:
             intencion = resultado_lc.herramientas[0] if resultado_lc.herramientas else "conversacion"
+            detectadas = list(resultado_lc.herramientas)
             respuesta, escalar = resultado_lc.texto, resultado_lc.escalar
             mensajes = resultado_lc.mensajes
             origen = resultado_lc.origen
@@ -242,6 +265,7 @@ def atender_mensaje(
                 cliente.contexto_cualificacion or {},
                 url_web(),
             )
+    _anotar_intencion(cliente, detectadas or [intencion])
     # En el panel se guarda lo mismo que recibe el cliente (lista, botones y enlace incluidos).
     enviado = "\n".join(m.plano() for m in mensajes) if mensajes else respuesta
     session.add(

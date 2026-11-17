@@ -953,3 +953,28 @@ a.boton {
 .sesion-actual button {
   margin-left: 0.5rem;
 }
+
+/* Ficha con varias joyas (JOY-80) */
+.interes {
+  margin-top: 10px;
+  padding: 10px 12px;
+  background: #fffdf9;
+  border: 1px solid #e6dccb;
+  border-radius: 8px;
+}
+
+.interes.activo {
+  border-color: var(--oro-oscuro);
+}
+
+.interes-titulo {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+}
+
+.interes-titulo button {
+  margin-left: auto;
+}

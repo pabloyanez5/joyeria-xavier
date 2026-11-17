@@ -1,3 +1,5 @@
+import re
+
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -36,3 +38,17 @@ def identificar_cliente(
     cliente, creado = registrar_cliente(session, canal, id_canal, nombre_perfil)
     cache.guardar(canal, id_canal, cliente.id)
     return cliente.id, creado
+
+
+_LETRAS = re.compile(r"[A-Za-zÁÉÍÓÚÜÑáéíóúüñ]{2,30}")
+
+
+def primer_nombre(nombre_perfil: str | None) -> str | None:
+    """El primer nombre del perfil, sin emojis ni adornos ("Pablo 🎸" -> "Pablo")."""
+    encontrado = _LETRAS.search(nombre_perfil or "")
+    return encontrado.group(0).capitalize() if encontrado else None
+
+
+def nombre_para_saludar(cliente: Cliente) -> str | None:
+    """Cómo llamar al cliente: el nombre que él pidió o, si no ha dicho, el de su perfil."""
+    return cliente.nombre_preferido or primer_nombre(cliente.nombre_perfil)

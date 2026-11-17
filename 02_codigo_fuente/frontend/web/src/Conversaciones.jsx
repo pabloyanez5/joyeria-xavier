@@ -18,6 +18,20 @@ function Estado({ valor }) {
   return <span className={`insignia estado-${valor}`}>{ETIQUETA_ESTADO[valor] ?? valor}</span>
 }
 
+function Datos({ items }) {
+  if (items.length === 0) return null
+  return (
+    <dl>
+      {items.map((i) => (
+        <div key={i.etiqueta}>
+          <dt>{i.etiqueta}</dt>
+          <dd>{i.valor}</dd>
+        </div>
+      ))}
+    </dl>
+  )
+}
+
 export default function Conversaciones({ onCrearOrden }) {
   const [lista, setLista] = useState([])
   const [elegida, setElegida] = useState(null)
@@ -172,18 +186,36 @@ export default function Conversaciones({ onCrearOrden }) {
 
                 <section className="ficha" aria-label="Ficha de contexto">
                   <h4>Ficha de contexto</h4>
-                  {d.ficha.length === 0 ? (
-                    <p className="nota">El agente todavía no recolectó datos del cliente.</p>
-                  ) : (
-                    <dl>
-                      {d.ficha.map((i) => (
-                        <div key={i.etiqueta}>
-                          <dt>{i.etiqueta}</dt>
-                          <dd>{i.valor}</dd>
-                        </div>
-                      ))}
-                    </dl>
+                  <Datos items={d.datos_del_cliente} />
+                  {d.intereses.length === 0 && (
+                    <p className="nota">El agente todavía no anotó ninguna joya.</p>
                   )}
+                  {d.intereses.map((i) => (
+                    <div key={i.numero} className={`interes ${i.activo ? 'activo' : ''}`}>
+                      <p className="interes-titulo">
+                        <strong>
+                          {d.intereses.length > 1 ? `${i.numero}. ` : ''}
+                          {i.titulo}
+                        </strong>
+                        {i.activo && d.intereses.length > 1 && (
+                          <span className="insignia estado-activa">De esta se está hablando</span>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() =>
+                            onCrearOrden({
+                              clienteId: String(d.orden_sugerida.cliente_id),
+                              productoId: '',
+                              descripcion: i.descripcion_de_orden,
+                            })
+                          }
+                        >
+                          Crear orden de esta joya
+                        </button>
+                      </p>
+                      <Datos items={i.datos} />
+                    </div>
+                  ))}
                 </section>
 
                 <div className="conv-mensajes" ref={caja}>
@@ -217,19 +249,21 @@ export default function Conversaciones({ onCrearOrden }) {
                 {aviso && <p className={`estado ${aviso.tipo === 'error' ? 'error' : 'ok'}`}>{aviso.texto}</p>}
 
                 <div className="conv-acciones">
-                  <button
-                    type="button"
-                    className="boton"
-                    onClick={() =>
-                      onCrearOrden({
-                        clienteId: String(d.orden_sugerida.cliente_id),
-                        productoId: '',
-                        descripcion: d.orden_sugerida.descripcion,
-                      })
-                    }
-                  >
-                    Crear orden con estos datos
-                  </button>
+                  {d.intereses.length === 0 && (
+                    <button
+                      type="button"
+                      className="boton"
+                      onClick={() =>
+                        onCrearOrden({
+                          clienteId: String(d.orden_sugerida.cliente_id),
+                          productoId: '',
+                          descripcion: d.orden_sugerida.descripcion,
+                        })
+                      }
+                    >
+                      Crear orden para este cliente
+                    </button>
+                  )}
                   {d.estado === 'escalada' && (
                     <button
                       type="button"

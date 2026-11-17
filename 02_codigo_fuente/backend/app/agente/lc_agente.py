@@ -25,8 +25,9 @@ from langchain_core.tools import StructuredTool
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.agente import menu, seguridad
+from app.agente import intereses, menu, seguridad
 from app.catalogo import precios_vigentes
+from app.clientes import nombre_para_saludar, primer_nombre
 from app.contacto import armar_canales
 from app.mensajes import Saliente
 from app.models import Cliente, Mensaje, Orden, Producto
@@ -50,8 +51,12 @@ en cada mensaje.
 - Entiende lo que el cliente quiere aunque lo escriba con otras palabras; no le pidas que use \
 comandos ni palabras exactas.
 - Haz una sola pregunta a la vez para conocer lo que busca, en este orden y sin repetir lo que ya \
-sabes: tipo de joya, material, ocasión, talla y presupuesto. Cuando el cliente te dé un dato, \
-guárdalo con la herramienta de preferencias.
+sabes: tipo de joya, modelo que le interesa, material, ocasión, talla y presupuesto. Cuando el \
+cliente te dé un dato, guárdalo con la herramienta de preferencias.
+- El cliente puede pedir más de una joya. Cada joya es un interés aparte, con su propio material, \
+talla, ocasión y presupuesto. Cuando hable de una joya distinta, guarda sus datos indicando la \
+categoría de esa joya; nunca pases el presupuesto ni la talla de una joya a otra. Si vuelve a una \
+joya de la que ya hablaron, retoma lo que tienes anotado de ella sin volver a preguntarlo.
 - Nunca inventes precios, existencias, plazos ni políticas. Para datos reales usa las herramientas.
 - Cuando el cliente pregunte por precios, joyas, categorías o quiera cotizar, llama SIEMPRE primero \
 a la herramienta del catálogo y menciona un precio "desde" real que ella devuelva.
@@ -222,39 +227,61 @@ def construir_herramientas(
     def guardar_preferencias(
         nombre: str | None = None,
         categoria: str | None = None,
+        modelo: str | None = None,
         material: str | None = None,
         talla: str | None = None,
         ocasion: str | None = None,
         presupuesto: str | None = None,
+        es_otra_joya: bool = False,
+        acepta_el_nombre: bool = False,
     ) -> str:
-        """Guarda lo que el cliente va contando: su nombre, el tipo de joya (Anillos, Argollas,
-        Cadenas, Pulseras, Aretes, Dijes), el material (oro o plata), su talla, la ocasión y su
-        presupuesto. Úsala cada vez que el cliente te dé uno de estos datos."""
+        """Guarda lo que el cliente va contando. Úsala cada vez que te dé uno de estos datos.
+
+        De la joya: categoria (Anillos, Argollas, Cadenas, Pulseras, Aretes, Dijes), modelo que
+        le interesa, material (oro o plata), talla, ocasion y presupuesto. Cada joya se guarda
+        aparte: si los datos son de una joya distinta a la que venían hablando, indica su
+        categoria; si quiere una segunda joya de la misma categoría, pon es_otra_joya en true.
+        Del cliente: nombre (cómo prefiere que lo llamen) o acepta_el_nombre en true cuando
+        acepte que lo llames por el nombre que ya tienes."""
         guardado = {}
-        if nombre:
-            cliente.nombre_preferido = nombre.strip()[:100]
-            guardado["nombre"] = cliente.nombre_preferido
-        if talla:
-            cliente.talla = talla.strip()[:20]
-            guardado["talla"] = cliente.talla
         contexto = dict(cliente.contexto_cualificacion or {})
+        if nombre and nombre.strip() != seguridad.MARCA_NOMBRE:
+            cliente.nombre_preferido = nombre.strip()[:100]
+            guardado["nombre"] = "guardado"
+            contexto["nombre_confirmado"] = True
+        elif acepta_el_nombre or nombre:
+            if not cliente.nombre_preferido:
+                cliente.nombre_preferido = primer_nombre(cliente.nombre_perfil)
+            if cliente.nombre_preferido:
+                guardado["nombre"] = "confirmado"
+                contexto["nombre_confirmado"] = True
+        datos = {}
         if categoria:
             existente = menu._categoria_existente(session, categoria)
-            contexto["categoria"] = existente or categoria.strip().capitalize()
-            guardado["categoria"] = contexto["categoria"]
+            datos["categoria"] = existente or categoria.strip().capitalize()
+        if modelo:
+            datos["modelo"] = modelo.strip()[:100]
         if material:
-            contexto["material"] = material.strip().lower()
-            guardado["material"] = contexto["material"]
+            datos["material"] = material.strip().lower()
+        if talla:
+            datos["talla"] = talla.strip()[:20]
+            cliente.talla = datos["talla"]
         if ocasion:
-            contexto["ocasion"] = ocasion.strip()[:100]
-            guardado["ocasion"] = contexto["ocasion"]
+            datos["ocasion"] = ocasion.strip()[:100]
         if presupuesto:
-            contexto["presupuesto"] = presupuesto.strip()[:50]
-            guardado["presupuesto"] = contexto["presupuesto"]
+            datos["presupuesto"] = presupuesto.strip()[:50]
+        guardado.update(datos)
         # Se reasigna un dict nuevo para que SQLAlchemy detecte el cambio en el JSON.
-        cliente.contexto_cualificacion = contexto
+        cliente.contexto_cualificacion = intereses.anotar(
+            contexto, otra_joya=bool(es_otra_joya and datos), **datos
+        )
         session.flush()
-        return f"Datos guardados: {guardado}" if guardado else "No había datos para guardar."
+        if not guardado:
+            return "No había datos para guardar."
+        return (
+            f"Datos guardados: {guardado}\nJoyas que le interesan al cliente:\n"
+            + intereses.resumen(cliente.contexto_cualificacion)
+        )
 
     def consultar_catalogo(categoria: str | None = None, material: str | None = None) -> str:
         """Consulta las joyas disponibles con su precio inicial referencial y devuelve el
@@ -437,16 +464,40 @@ def responder(
     # Si el modelo principal falla (503 saturado, 504 sin tiempo), contesta el de respaldo.
     respaldo_con_herramientas = respaldo.bind_tools(herramientas) if respaldo is not None else None
 
+    nombre = nombre_para_saludar(cliente)
+    contexto = cliente.contexto_cualificacion or {}
     sistema = INSTRUCCIONES
-    if cliente.nombre_preferido:
+    if nombre:
         # El nombre real no se envía al modelo (RNF-09): él escribe la marca y el servidor la cambia.
         sistema += (
             "\nYa conoces el nombre del cliente. Si quieres llamarlo por su nombre, escribe "
             f"exactamente {seguridad.MARCA_NOMBRE}; nunca escribas su nombre real."
         )
+    pregunta_el_nombre = not contexto.get("nombre_confirmado") and not contexto.get(
+        "nombre_preguntado"
+    )
+    if pregunta_el_nombre:
+        # Cualificación (RF-01): se pregunta una sola vez cómo prefiere que lo llamen.
+        if nombre:
+            sistema += (
+                "\nTodavía no sabes si le gusta que lo llamen así. En esta respuesta, además de "
+                f"atender lo que pide, pregúntale si puedes llamarlo {seguridad.MARCA_NOMBRE} o si "
+                "prefiere otro nombre."
+            )
+        else:
+            sistema += (
+                "\nTodavía no sabes cómo se llama. En esta respuesta, además de atender lo que "
+                "pide, pregúntale cómo prefiere que lo llames."
+            )
+    if intereses.lista(contexto):
+        # Memoria del cliente (US-07): lo que ya contó, para no volver a preguntarlo.
+        sistema += (
+            "\n\nLo que ya sabes de las joyas que le interesan (no lo vuelvas a preguntar):\n"
+            + intereses.resumen(contexto)
+        )
     mensajes: list[BaseMessage] = [
         SystemMessage(sistema),
-        *_historial(session, conversacion_id, id_mensaje_actual, cliente.nombre_preferido),
+        *_historial(session, conversacion_id, id_mensaje_actual, nombre),
         HumanMessage(texto),
     ]
 
@@ -487,7 +538,12 @@ def responder(
     if protegida != respuesta:
         logger.warning("Guardrail de salida: respuesta corregida (cliente %s)", cliente.id)
         respuesta = protegida
-    respuesta = seguridad.poner_nombre(respuesta, cliente.nombre_preferido)
+    respuesta = seguridad.poner_nombre(respuesta, nombre_para_saludar(cliente))
+    if pregunta_el_nombre:
+        cliente.contexto_cualificacion = {
+            **(cliente.contexto_cualificacion or {}),
+            "nombre_preguntado": True,
+        }
 
     salientes = None
     if estado.lista is not None:

@@ -14,6 +14,8 @@ from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
 from app.acceso import requiere
+from app.agente import intereses
+from app.clientes import nombre_para_saludar
 from app.db import get_session
 from app.meta_envio import Enviador, ErrorMeta
 from app.models import (
@@ -32,15 +34,8 @@ router = APIRouter(
 ESTADOS = ("activa", "escalada", "cerrada")
 VISTA_PREVIA = 90  # caracteres del último mensaje que se muestran en la lista
 
-# (clave en el contexto del cliente, etiqueta que ve el asesor)
-CAMPOS_FICHA = (
-    ("categoria", "Joya"),
-    ("material", "Material"),
-    ("quilataje", "Quilataje"),
-    ("talla", "Talla"),
-    ("ocasion", "Ocasión"),
-    ("presupuesto", "Presupuesto"),
-)
+# (clave en el interés del cliente, etiqueta que ve el asesor)
+CAMPOS_FICHA = intereses.ETIQUETAS
 
 
 class ItemFicha(BaseModel):
@@ -82,8 +77,20 @@ class OrdenSugerida(BaseModel):
     descripcion: str
 
 
+class InteresOut(BaseModel):
+    """Una joya que le interesa al cliente, con sus propios datos (JOY-80)."""
+
+    numero: int
+    activo: bool  # de esta se está hablando
+    titulo: str
+    datos: list[ItemFicha]
+    descripcion_de_orden: str
+
+
 class ConversacionDetalle(ConversacionResumen):
-    ficha: list[ItemFicha]
+    ficha: list[ItemFicha]  # la joya de la que se está hablando
+    datos_del_cliente: list[ItemFicha]  # nombre preferido, canal e intención detectada
+    intereses: list[InteresOut]
     motivo_escalamiento: str | None
     historial: list[MensajeOut]
     transiciones: list[TransicionOut]
@@ -113,15 +120,44 @@ def _autor(m: Mensaje) -> str:
     return m.autor or "agente"
 
 
-def _ficha(cliente: Cliente) -> list[ItemFicha]:
-    contexto = dict(cliente.contexto_cualificacion or {})
-    if cliente.talla:
-        contexto["talla"] = cliente.talla
+def _items(interes: dict) -> list[ItemFicha]:
     return [
-        ItemFicha(etiqueta=etiqueta, valor=str(contexto[clave]))
+        ItemFicha(etiqueta=etiqueta, valor=str(interes[clave]))
         for clave, etiqueta in CAMPOS_FICHA
-        if contexto.get(clave)
+        if interes.get(clave)
     ]
+
+
+def _intereses_de(cliente: Cliente) -> list[dict]:
+    """Las joyas que le interesan. La talla de una ficha antigua se suma a su única joya."""
+    guardados = intereses.lista(cliente.contexto_cualificacion)
+    if cliente.talla and not any(i.get("talla") for i in guardados):
+        if not guardados:
+            guardados = [{}]
+        if len(guardados) == 1:
+            guardados[0]["talla"] = cliente.talla
+    return guardados
+
+
+def _ficha(cliente: Cliente) -> list[ItemFicha]:
+    guardados = _intereses_de(cliente)
+    if not guardados:
+        return []
+    indice = intereses.indice_activo(cliente.contexto_cualificacion)
+    return _items(guardados[indice if indice is not None else -1])
+
+
+def _datos_del_cliente(cliente: Cliente, c: Conversacion) -> list[ItemFicha]:
+    contexto = cliente.contexto_cualificacion or {}
+    nombre = nombre_para_saludar(cliente)
+    datos = []
+    if nombre:
+        sufijo = "" if cliente.nombre_preferido else " (de su perfil, sin confirmar)"
+        datos.append(ItemFicha(etiqueta="Nombre preferido", valor=nombre + sufijo))
+    datos.append(ItemFicha(etiqueta="Canal", valor=c.canal))
+    if contexto.get("intencion"):
+        datos.append(ItemFicha(etiqueta="Intención detectada", valor=str(contexto["intencion"])))
+    return datos
 
 
 def _resumen(session: Session, c: Conversacion) -> ConversacionResumen:
@@ -154,6 +190,23 @@ def _resumen(session: Session, c: Conversacion) -> ConversacionResumen:
     )
 
 
+def _intereses_out(cliente: Cliente, c: Conversacion) -> list[InteresOut]:
+    guardados = _intereses_de(cliente)
+    actual = intereses.indice_activo(cliente.contexto_cualificacion)
+    if actual is None and guardados:
+        actual = len(guardados) - 1
+    return [
+        InteresOut(
+            numero=n + 1,
+            activo=n == actual,
+            titulo=intereses.titulo(interes),
+            datos=_items(interes),
+            descripcion_de_orden=_descripcion_de_orden(c, _items(interes)),
+        )
+        for n, interes in enumerate(guardados)
+    ]
+
+
 def _descripcion_de_orden(c: Conversacion, ficha: list[ItemFicha]) -> str:
     datos = "; ".join(f"{i.etiqueta}: {i.valor}" for i in ficha)
     origen = f"Origen: conversación #{c.id} por {c.canal}."
@@ -176,6 +229,8 @@ def _detalle(session: Session, c: Conversacion) -> ConversacionDetalle:
     return ConversacionDetalle(
         **_resumen(session, c).model_dump(),
         ficha=ficha,
+        datos_del_cliente=_datos_del_cliente(cliente, c),
+        intereses=_intereses_out(cliente, c),
         motivo_escalamiento=motivo if c.estado == "escalada" and motivo else None,
         historial=[
             MensajeOut(
