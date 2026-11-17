@@ -14,7 +14,11 @@ export async function leer(respuesta) {
   try {
     const cuerpo = await respuesta.json()
     if (typeof cuerpo.detail === 'string') detalle = cuerpo.detail
-    else if (Array.isArray(cuerpo.detail)) detalle = 'Revisa los datos del formulario'
+    else if (Array.isArray(cuerpo.detail)) {
+      // Errores de validación: se muestra el primero, sin el prefijo técnico.
+      const primero = cuerpo.detail[0]?.msg ?? ''
+      detalle = primero.replace(/^Value error, /, '') || 'Revisa los datos del formulario'
+    }
   } catch {
     // se deja el mensaje genérico
   }

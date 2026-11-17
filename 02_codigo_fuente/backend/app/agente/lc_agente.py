@@ -220,6 +220,16 @@ def _dinero(valor: Decimal) -> str:
     return f"${Decimal(valor):,.2f}"
 
 
+# Cómo se le cuenta al cliente cada etapa de su orden.
+_ETAPA_PARA_EL_CLIENTE = {
+    "por_verificar": "pendiente de confirmar el abono con un asesor",
+    "en_cola": "confirmada, en la cola del taller",
+    "en_produccion": "en producción",
+    "terminada": "terminada, lista para coordinar la entrega",
+    "entregada": "entregada",
+}
+
+
 def construir_herramientas(
     session: Session, cliente: Cliente, estado: _Estado
 ) -> list[StructuredTool]:
@@ -334,7 +344,7 @@ def construir_herramientas(
         if not ordenes:
             return "El cliente no tiene órdenes registradas."
         lineas = [
-            f"- OP-{o.id:06d}: {o.descripcion} · etapa actual: {o.etapa_actual.replace('_', ' ')}"
+            f"- OP-{o.id:06d}: {o.descripcion} · etapa actual: {_ETAPA_PARA_EL_CLIENTE.get(o.etapa_actual, o.etapa_actual.replace('_', ' '))}"
             for o in ordenes
         ]
         return "Órdenes del cliente:\n" + "\n".join(lineas)

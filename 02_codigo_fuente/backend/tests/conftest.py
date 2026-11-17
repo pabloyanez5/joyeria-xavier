@@ -84,3 +84,27 @@ def sin_sesion() -> None:
     from app.main import app
 
     app.dependency_overrides.pop(acceso.usuario_actual, None)
+
+
+def datos_de_orden(**extra) -> dict:
+    """Lo mínimo que pide una orden (JOY-79); cada prueba cambia lo que le interesa."""
+    return {
+        "nombre_completo": "Ana Pérez",
+        "telefono": "0991234567",
+        "peso_gramos": "4.50",
+        "fecha_entrega_taller": "2026-12-01",
+        "fecha_entrega_cliente": "2026-12-10",
+        "total": "350.00",
+        **extra,
+    }
+
+
+def verificar(api, orden: dict, abono: str = "100.00", **extra) -> dict:
+    """Registra el abono para que la orden entre a la cola del taller (JOY-22)."""
+    r = api.post(
+        f"/ordenes/{orden['id']}/verificar",
+        json={"abono": abono, "avisar_al_cliente": False},
+        **extra,
+    )
+    assert r.status_code == 200, r.text
+    return r.json()

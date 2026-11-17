@@ -13,7 +13,7 @@ from app.main import app
 from app.models import Cliente, Mensaje, Orden, Usuario
 from app.usuarios import activar, cambiar_clave, crear_usuario
 from app.webhook import get_enviador
-from tests.conftest import sin_sesion
+from tests.conftest import datos_de_orden, sin_sesion, verificar
 from tests.test_conversaciones import EnviadorFalso
 
 CLAVE = "clave-larga-123"
@@ -213,10 +213,15 @@ def test_solo_el_asesor_crea_ordenes_y_solo_el_taller_las_avanza(api, session, u
     cliente = Cliente(canal="whatsapp", id_canal="593111", nombre_perfil="Ana Pérez")
     session.add(cliente)
     session.commit()
-    cuerpo = {"cliente_id": cliente.id, "descripcion": "Argollas en oro 18k"}
+    cuerpo = datos_de_orden(cliente_id=cliente.id, descripcion="Argollas en oro 18k")
     for rol in ("taller", "direccion"):
         assert api.post("/ordenes", json=cuerpo, headers=cabecera(api, rol)).status_code == 403
     orden = api.post("/ordenes", json=cuerpo, headers=cabecera(api, "asesor")).json()
+    abono = {"abono": "100.00", "avisar_al_cliente": False}
+    for rol in ("taller", "direccion"):  # solo el asesor registra el abono
+        r = api.post(f"/ordenes/{orden['id']}/verificar", json=abono, headers=cabecera(api, rol))
+        assert r.status_code == 403
+    verificar(api, orden, headers=cabecera(api, "asesor"))
     etapa = {"etapa": "en_produccion", "avisar_al_cliente": False}
     for rol in ("asesor", "direccion"):
         r = api.post(f"/ordenes/{orden['id']}/etapa", json=etapa, headers=cabecera(api, rol))
@@ -234,7 +239,7 @@ def test_la_direccion_no_puede_modificar_nada(api, session, usuarios):
     cabeza = cabecera(api, "direccion")
     assert api.get("/metricas", headers=cabeza).status_code == 200
     assert api.post(
-        "/ordenes", json={"cliente_id": cliente.id, "descripcion": "algo"}, headers=cabeza
+        "/ordenes", json=datos_de_orden(cliente_id=cliente.id, descripcion="algo"), headers=cabeza
     ).status_code == 403
     assert api.post("/conversaciones/1/cerrar", headers=cabeza).status_code == 403
     assert api.post("/conversaciones/1/responder", json={"texto": "hola"}, headers=cabeza).status_code == 403
@@ -248,10 +253,12 @@ def test_el_acuse_guarda_quien_lo_confirmo_y_cuando(api, session, usuarios):
     session.commit()
     orden = api.post(
         "/ordenes",
-        json={"cliente_id": cliente.id, "descripcion": "Argollas en oro 18k"},
+        json=datos_de_orden(cliente_id=cliente.id, descripcion="Argollas en oro 18k"),
         headers=cabecera(api, "asesor"),
     ).json()
+    orden = verificar(api, orden, headers=cabecera(api, "asesor"))
     assert orden["acuse_por"] is None and orden["acuse_en"] is None
+    assert orden["verificada_por"] == "Persona asesor" and orden["verificada_en"] is not None
     r = api.post(f"/ordenes/{orden['id']}/acuse", headers=cabecera(api, "taller")).json()
     assert r["acuse_pendiente"] is False
     assert r["acuse_por"] == "Persona taller" and r["acuse_en"] is not None
