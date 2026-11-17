@@ -1087,3 +1087,60 @@ a.boton {
   justify-content: space-between;
   gap: 8px;
 }
+
+/* Filtros del tablero e historial de cada orden (JOY-83) */
+.tablero-filtros {
+  display: grid;
+  grid-template-columns: minmax(220px, 2fr) repeat(3, minmax(140px, 1fr)) auto;
+  gap: 10px;
+  align-items: end;
+  margin: 12px 0;
+}
+
+.tablero-filtros label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.85rem;
+  color: var(--suave);
+}
+
+.tablero-filtros input,
+.tablero-filtros select {
+  padding: 7px 9px;
+  font: inherit;
+  color: var(--tinta);
+  background: #fff;
+  border: 1px solid var(--linea);
+  border-radius: 8px;
+}
+
+.tarjeta-orden .tarjeta-historial {
+  align-self: flex-start;
+  padding: 2px 0;
+  font-size: 0.8rem;
+  color: var(--oro-oscuro);
+  background: none;
+  border: none;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.historial {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding-left: 18px;
+  font-size: 0.8rem;
+}
+
+.historial li strong {
+  display: block;
+  font-weight: 600;
+}
+
+@media (max-width: 900px) {
+  .tablero-filtros {
+    grid-template-columns: 1fr 1fr;
+  }
+}

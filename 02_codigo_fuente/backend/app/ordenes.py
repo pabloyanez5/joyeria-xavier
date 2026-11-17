@@ -11,12 +11,12 @@ Flujo de una orden:
 - El taller confirma el recibo y avanza las etapas; el cliente recibe un aviso en cada una.
 """
 import re
-from datetime import date, datetime, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field, field_validator, model_validator
-from sqlalchemy import select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.acceso import requiere
@@ -351,18 +351,51 @@ def _pedido_out(session: Session, pedido: Pedido, ordenes: list[Orden]) -> Pedid
 
 # --- consultar ---
 
+_CODIGO = re.compile(r"^(?:(OP|PD)-?)?0*(\d{1,9})$", re.IGNORECASE)
+
+
+def _filtro_de_texto(consulta, texto: str):
+    """Busca por código de orden (OP-000012 o 12), de pedido (PD-000003), cliente o detalle."""
+    texto = " ".join(texto.split())
+    codigo = _CODIGO.match(texto)
+    if codigo:
+        prefijo, numero = (codigo.group(1) or "").upper(), int(codigo.group(2))
+        return consulta.where(Orden.pedido_id == numero if prefijo == "PD" else Orden.id == numero)
+    patron = f"%{texto.lower()}%"
+    return consulta.join(Cliente, Cliente.id == Orden.cliente_id).where(
+        or_(
+            func.lower(Orden.descripcion).like(patron),
+            func.lower(Cliente.nombre_completo).like(patron),
+            func.lower(Cliente.nombre_preferido).like(patron),
+            func.lower(Cliente.nombre_perfil).like(patron),
+        )
+    )
+
+
 @router.get("", response_model=list[OrdenOut], dependencies=[Depends(puede_ver)])
 def listar_ordenes(
     etapa: str | None = Query(None, description=", ".join(ETAPAS)),
-    limite: int = Query(100, ge=1, le=300),
+    q: str | None = Query(None, max_length=100, description="Código, cliente o detalle"),
+    desde: date | None = Query(None, description="Creadas desde esta fecha (AAAA-MM-DD)"),
+    hasta: date | None = Query(None, description="Creadas hasta esta fecha, inclusive"),
+    limite: int = Query(300, ge=1, le=500),
     session: Session = Depends(get_session),
 ):
-    """Órdenes más recientes primero; el tablero las agrupa por etapa."""
+    """Órdenes más recientes primero, con filtros que se combinan (JOY-83)."""
     if etapa is not None and etapa not in ETAPAS:
         raise HTTPException(422, f"La etapa debe ser una de: {', '.join(ETAPAS)}")
+    if desde and hasta and hasta < desde:
+        raise HTTPException(422, "La fecha final no puede ser anterior a la inicial")
     consulta = select(Orden)
     if etapa:
         consulta = consulta.where(Orden.etapa_actual == etapa)
+    if q and q.strip():
+        consulta = _filtro_de_texto(consulta, q)
+    if desde:
+        consulta = consulta.where(Orden.creado_en >= datetime.combine(desde, time.min, timezone.utc))
+    if hasta:
+        fin = datetime.combine(hasta + timedelta(days=1), time.min, timezone.utc)
+        consulta = consulta.where(Orden.creado_en < fin)
     ordenes = session.scalars(consulta.order_by(Orden.id.desc()).limit(limite)).all()
     return [armar_salida(session, o) for o in ordenes]
 
