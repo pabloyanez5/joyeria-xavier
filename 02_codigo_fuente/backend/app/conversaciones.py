@@ -174,7 +174,10 @@ def _resumen(session: Session, c: Conversacion) -> ConversacionResumen:
     activas = session.scalar(
         select(func.count())
         .select_from(Orden)
-        .where(Orden.cliente_id == c.cliente_id, Orden.etapa_actual != "entregada")
+        .where(
+            Orden.cliente_id == c.cliente_id,
+            Orden.etapa_actual.not_in(("entregada", "cancelada")),
+        )
     )
     vista = ultimo.contenido.replace("\n", " ") if ultimo else None
     if vista and len(vista) > VISTA_PREVIA:
@@ -196,9 +199,11 @@ def _resumen(session: Session, c: Conversacion) -> ConversacionResumen:
 def _ordenes_de_los_intereses(
     session: Session, cliente: Cliente, c: Conversacion, guardados: list[dict]
 ) -> list[Orden | None]:
-    """La orden de cada joya de la ficha, o None si todavía no se crea."""
+    """La orden de cada joya de la ficha, o None si todavía no se crea (o se canceló)."""
     propias = session.scalars(
-        select(Orden).where(Orden.cliente_id == cliente.id).order_by(Orden.id)
+        select(Orden)
+        .where(Orden.cliente_id == cliente.id, Orden.etapa_actual != "cancelada")
+        .order_by(Orden.id)
     ).all()
     por_id = {o.id: o for o in propias}
     encontradas = [por_id.get(i.get("orden_id")) for i in guardados]

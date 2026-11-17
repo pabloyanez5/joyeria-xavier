@@ -15,7 +15,10 @@ ETAPA_PARA_EL_CLIENTE = {
     "en_produccion": "en producción",
     "terminada": "terminada, lista para coordinar la entrega",
     "entregada": "entregada",
+    "cancelada": "cancelada",
 }
+# Las que ya no avanzan: no se cuentan como pedidos en curso.
+CERRADAS = ("entregada", "cancelada")
 
 MAXIMO = 5
 
@@ -25,12 +28,12 @@ def etapa(orden: Orden) -> str:
 
 
 def vigentes(session: Session, cliente_id: int) -> list[Orden]:
-    """Las órdenes que aún no se entregan (las más recientes primero). Si ya se entregaron
-    todas, la última entregada, para que el cliente sepa que su pedido se cerró."""
+    """Las órdenes en curso (las más recientes primero). Si ya no queda ninguna, la última
+    (entregada o cancelada), para que el cliente sepa cómo terminó su pedido."""
     abiertas = list(
         session.scalars(
             select(Orden)
-            .where(Orden.cliente_id == cliente_id, Orden.etapa_actual != "entregada")
+            .where(Orden.cliente_id == cliente_id, Orden.etapa_actual.not_in(CERRADAS))
             .order_by(Orden.id.desc())
             .limit(MAXIMO)
         )
@@ -52,7 +55,7 @@ def _joya(session: Session, orden: Orden) -> str:
 
 
 def _entrega(orden: Orden) -> str:
-    if orden.fecha_entrega_cliente and orden.etapa_actual != "entregada":
+    if orden.fecha_entrega_cliente and orden.etapa_actual not in CERRADAS:
         return f" Entrega estimada: {orden.fecha_entrega_cliente:%d/%m/%Y}."
     return ""
 

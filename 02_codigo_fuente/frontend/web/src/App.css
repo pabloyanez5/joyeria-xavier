@@ -1144,3 +1144,85 @@ a.boton {
     grid-template-columns: 1fr 1fr;
   }
 }
+
+/* JOY-23: corregir, devolver o cancelar una orden */
+.tablero-col.cancelada {
+  border-top: 3px solid #8a8278;
+  opacity: 0.85;
+}
+
+@media (min-width: 1101px) {
+  .tablero.con-canceladas {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+}
+
+.tarjeta-cambio {
+  padding: 4px 6px;
+  border-left: 3px solid #8a8278;
+  background: #f1ece3;
+  border-radius: 4px;
+  overflow-wrap: anywhere;
+}
+
+.gestion-acciones {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.gestion-acciones button {
+  font-size: 0.78rem;
+}
+
+.gestion {
+  display: grid;
+  gap: 6px;
+  padding: 8px;
+  border: 1px dashed var(--linea);
+  border-radius: 8px;
+}
+
+.gestion label {
+  display: grid;
+  gap: 2px;
+  font-size: 0.78rem;
+  color: var(--suave);
+}
+
+.gestion input,
+.gestion textarea {
+  padding: 6px 8px;
+  font: inherit;
+  border: 1px solid var(--linea);
+  border-radius: 6px;
+  min-width: 0;
+}
+
+.gestion .nota {
+  margin: 0;
+  font-size: 0.78rem;
+}
+
+button.peligro,
+.boton.peligro {
+  color: #fff;
+  background: #a23b2a;
+  border: 1px solid #a23b2a;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.historial-nota {
+  display: block;
+  color: var(--suave);
+  overflow-wrap: anywhere;
+}
+
+.historial li.cambio strong {
+  color: #6b4e12;
+}
+
+.historial li.cancelacion strong {
+  color: #a23b2a;
+}

@@ -21,7 +21,7 @@ from app.models import (
     Orden,
     TransicionConversacion,
 )
-from app.ordenes import ETAPAS
+from app.ordenes import ETAPAS_CON_CANCELADA
 
 # Los indicadores son de lectura y solo para la dirección (RF-06).
 router = APIRouter(
@@ -101,7 +101,9 @@ def metricas(
     conteo = dict(
         session.execute(select(Orden.etapa_actual, func.count()).group_by(Orden.etapa_actual)).all()
     )
-    ordenes_por_etapa = [EtapaConteo(etapa=e, ordenes=conteo.get(e, 0)) for e in ETAPAS]
+    ordenes_por_etapa = [
+        EtapaConteo(etapa=e, ordenes=conteo.get(e, 0)) for e in ETAPAS_CON_CANCELADA
+    ]
     pendientes = session.scalar(
         select(func.count())
         .select_from(Orden)
@@ -111,7 +113,7 @@ def metricas(
     entregas = session.execute(
         select(Orden.creado_en, HistorialEtapa.creado_en)
         .join(HistorialEtapa, HistorialEtapa.orden_id == Orden.id)
-        .where(HistorialEtapa.etapa == "entregada")
+        .where(HistorialEtapa.etapa == "entregada", HistorialEtapa.tipo == "etapa")
     ).all()
     horas = [
         (_como_utc(fin) - _como_utc(inicio)).total_seconds() / 3600

@@ -164,6 +164,19 @@ def marcar_pedidas(contexto: dict | None, pedidas: dict[int, int]) -> dict:
     return contexto
 
 
+def desmarcar(contexto: dict | None, orden_id: int) -> dict:
+    """La orden se canceló: su joya vuelve a quedar sin orden en la ficha."""
+    contexto = dict(contexto or {})
+    guardados = lista(contexto)
+    if not any(i.get("orden_id") == orden_id for i in guardados):
+        return contexto
+    for interes in guardados:
+        if interes.get("orden_id") == orden_id:
+            interes.pop("orden_id")
+    contexto["intereses"] = guardados
+    return contexto
+
+
 def titulo(interes: dict) -> str:
     """'Aretes de oro', 'Cadenas' o 'Joya sin definir'."""
     texto = interes.get("categoria") or "Joya sin definir"
