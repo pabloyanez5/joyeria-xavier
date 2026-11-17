@@ -9,6 +9,7 @@ from app.main import app
 from app.meta_envio import Enviador, ErrorMeta
 from app.models import Cliente, HistorialEtapa, Mensaje, Orden, Usuario
 from app.webhook import get_enviador
+from tests.conftest import entrar_como
 
 
 class EnviadorFalso(Enviador):
@@ -64,18 +65,20 @@ def test_una_orden_nueva_propone_la_etapa_siguiente(api, datos):
 
 
 def test_el_taller_avanza_etapa_por_etapa_hasta_la_entrega(api, session, datos):
+    entrar_como(datos["asesor"])
     orden = nueva_orden(api, datos)
+    entrar_como(datos["taller"])
     for etapa, siguiente in [
         ("en_produccion", "terminada"),
         ("terminada", "entregada"),
         ("entregada", None),
     ]:
-        r = avanzar(api, orden, etapa, usuario_id=datos["taller"].id)
+        r = avanzar(api, orden, etapa)
         assert r.status_code == 200
         assert r.json()["etapa_actual"] == etapa and r.json()["siguiente_etapa"] == siguiente
     historial = api.get(f"/ordenes/{orden['id']}/historial").json()
     assert [h["etapa"] for h in historial] == ["en_cola", "en_produccion", "terminada", "entregada"]
-    assert historial[1]["usuario"] == "Marta" and historial[0]["usuario"] is None
+    assert [h["usuario"] for h in historial] == ["Luis", "Marta", "Marta", "Marta"]
 
 
 def test_salir_de_la_cola_cuenta_como_acuse_del_taller(api, datos):
@@ -103,11 +106,13 @@ def test_una_orden_entregada_ya_no_avanza(api, datos):
     assert r.status_code == 409 and "entregada" in r.json()["detail"]
 
 
-def test_orden_o_usuario_inexistente_y_rol_incorrecto(api, datos):
+def test_orden_inexistente_y_rol_incorrecto(api, datos):
     assert api.post("/ordenes/999/etapa", json={"etapa": "en_produccion"}).status_code == 404
     orden = nueva_orden(api, datos)
-    assert avanzar(api, orden, "en_produccion", usuario_id=999).status_code == 404
-    assert avanzar(api, orden, "en_produccion", usuario_id=datos["asesor"].id).status_code == 422
+    entrar_como(datos["asesor"])
+    assert avanzar(api, orden, "en_produccion").status_code == 403  # solo el taller avanza
+    entrar_como(datos["taller"])
+    assert avanzar(api, orden, "en_produccion").status_code == 200
 
 
 def test_el_cliente_recibe_un_aviso_por_su_canal(api, session, datos):

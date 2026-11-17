@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { pedir } from './sesion.js'
 import { hora, leer } from './util.js'
 
 const COLUMNAS = [
@@ -16,7 +17,7 @@ const TEXTO_AVISO = {
 }
 
 // Tablero de producción: una columna por etapa; el taller avanza cada orden a la siguiente.
-export default function Tablero({ version, onCambio }) {
+export default function Tablero({ version, onCambio, puedeAvanzar = false }) {
   const [ordenes, setOrdenes] = useState([])
   const [error, setError] = useState(null)
   const [aviso, setAviso] = useState(null)
@@ -24,7 +25,7 @@ export default function Tablero({ version, onCambio }) {
   const [ocupada, setOcupada] = useState(null)
 
   const cargar = useCallback(() => {
-    fetch('/api/ordenes')
+    pedir('/api/ordenes')
       .then(leer)
       .then((o) => {
         setOrdenes(o)
@@ -43,7 +44,7 @@ export default function Tablero({ version, onCambio }) {
     setOcupada(orden.id)
     setAviso(null)
     try {
-      const r = await fetch(`/api/ordenes/${orden.id}/etapa`, {
+      const r = await pedir(`/api/ordenes/${orden.id}/etapa`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ etapa: orden.siguiente_etapa, avisar_al_cliente: avisar }),
@@ -62,7 +63,7 @@ export default function Tablero({ version, onCambio }) {
 
   async function darAcuse(orden) {
     try {
-      await fetch(`/api/ordenes/${orden.id}/acuse`, { method: 'POST' }).then(leer)
+      await pedir(`/api/ordenes/${orden.id}/acuse`, { method: 'POST' }).then(leer)
       cargar()
     } catch (e) {
       setAviso({ tipo: 'error', texto: e.message })
@@ -73,10 +74,12 @@ export default function Tablero({ version, onCambio }) {
     <section aria-label="Tablero de producción">
       <h2 className="cola-titulo">
         Tablero del taller <span>({ordenes.length})</span>
-        <label className="tablero-avisar">
-          <input type="checkbox" checked={avisar} onChange={(e) => setAvisar(e.target.checked)} />
-          Avisar al cliente por WhatsApp
-        </label>
+        {puedeAvanzar && (
+          <label className="tablero-avisar">
+            <input type="checkbox" checked={avisar} onChange={(e) => setAvisar(e.target.checked)} />
+            Avisar al cliente por WhatsApp
+          </label>
+        )}
         <button type="button" onClick={cargar}>
           Actualizar
         </button>
@@ -103,12 +106,19 @@ export default function Tablero({ version, onCambio }) {
                   {o.acuse_pendiente && (
                     <div>
                       <span className="insignia pendiente">Acuse pendiente</span>
-                      <button type="button" onClick={() => darAcuse(o)}>
-                        Simular acuse del taller
-                      </button>
+                      {puedeAvanzar && (
+                        <button type="button" onClick={() => darAcuse(o)}>
+                          Confirmar recibo
+                        </button>
+                      )}
                     </div>
                   )}
-                  {o.siguiente_etapa && (
+                  {o.acuse_por && (
+                    <small>
+                      Recibida por {o.acuse_por} · {hora(o.acuse_en)}
+                    </small>
+                  )}
+                  {puedeAvanzar && o.siguiente_etapa && (
                     <button
                       type="button"
                       className="boton primario"

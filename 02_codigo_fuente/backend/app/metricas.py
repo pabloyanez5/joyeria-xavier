@@ -11,6 +11,7 @@ from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.acceso import requiere
 from app.db import get_session
 from app.models import (
     Cliente,
@@ -22,7 +23,10 @@ from app.models import (
 )
 from app.ordenes import ETAPAS
 
-router = APIRouter(prefix="/metricas", tags=["metricas"])
+# Los indicadores son de lectura y solo para la dirección (RF-06).
+router = APIRouter(
+    prefix="/metricas", tags=["metricas"], dependencies=[Depends(requiere("direccion"))]
+)
 
 
 class DiaConversaciones(BaseModel):

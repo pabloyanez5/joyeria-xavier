@@ -932,3 +932,24 @@ a.boton {
     grid-template-columns: 1fr;
   }
 }
+
+/* Inicio de sesión del panel (JOY-78) */
+.acceso {
+  display: grid;
+  gap: 0.9rem;
+  max-width: 22rem;
+  margin: 2rem auto;
+}
+
+.acceso label {
+  display: grid;
+  gap: 0.3rem;
+}
+
+.sesion-actual {
+  font-size: 0.9rem;
+}
+
+.sesion-actual button {
+  margin-left: 0.5rem;
+}

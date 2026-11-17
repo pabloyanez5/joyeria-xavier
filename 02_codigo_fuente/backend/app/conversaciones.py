@@ -13,13 +13,21 @@ from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
+from app.acceso import requiere
 from app.db import get_session
 from app.meta_envio import Enviador, ErrorMeta
-from app.models import Cliente, Conversacion, Mensaje, Orden, TransicionConversacion
+from app.models import (
+    Cliente, Conversacion, Mensaje, Orden, TransicionConversacion, Usuario,
+)
 from app.ordenes import nombre_de
 from app.webhook import get_enviador
 
-router = APIRouter(prefix="/conversaciones", tags=["conversaciones"])
+# Las conversaciones y la ficha del cliente son solo para el asesor (y el rol admin).
+puede_atender = requiere("asesor")
+
+router = APIRouter(
+    prefix="/conversaciones", tags=["conversaciones"], dependencies=[Depends(puede_atender)]
+)
 
 ESTADOS = ("activa", "escalada", "cerrada")
 VISTA_PREVIA = 90  # caracteres del último mensaje que se muestran en la lista
@@ -58,6 +66,7 @@ class MensajeOut(BaseModel):
     autor: str  # cliente | agente | asesor
     # Solo en respuestas del agente: modelo | respaldo | reglas | menu | guardrail.
     origen: str | None = None
+    usuario: str | None = None  # asesor que escribió el mensaje desde el panel
     contenido: str
     creado_en: datetime | None
 
@@ -91,6 +100,11 @@ class RespuestaAsesorIn(BaseModel):
         if not valor:
             raise ValueError("El mensaje no puede estar vacío")
         return valor
+
+
+def _nombre_de_usuario(session: Session, usuario_id: int | None) -> str | None:
+    usuario = session.get(Usuario, usuario_id) if usuario_id else None
+    return usuario.nombre if usuario else None
 
 
 def _autor(m: Mensaje) -> str:
@@ -168,6 +182,7 @@ def _detalle(session: Session, c: Conversacion) -> ConversacionDetalle:
                 id=m.id,
                 autor=_autor(m),
                 origen=m.origen,
+                usuario=_nombre_de_usuario(session, m.usuario_id),
                 contenido=m.contenido,
                 creado_en=m.creado_en,
             )
@@ -257,6 +272,7 @@ def responder_como_asesor(
     datos: RespuestaAsesorIn,
     session: Session = Depends(get_session),
     enviador: Enviador | None = Depends(get_enviador),
+    usuario: Usuario = Depends(puede_atender),
 ):
     """El asesor escribe al cliente por su mismo canal. Al intervenir una persona, el agente
     deja de responder en esa conversación hasta que se reactive."""
@@ -278,6 +294,7 @@ def responder_como_asesor(
             direccion="saliente",
             contenido=datos.texto,
             autor="asesor",
+            usuario_id=usuario.id,
         )
     )
     if conversacion.estado == "activa":

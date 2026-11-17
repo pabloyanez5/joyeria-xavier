@@ -21,10 +21,13 @@ Para desarrollo local se sigue usando `docker-compose.yml` (solo base de datos y
 3. Docker y Docker Compose instalados; `deploy` pertenece al grupo `docker`.
 4. Repositorio clonado en `~/joyeria-xavier` (rama `develop`).
 5. Archivo `04_despliegue_ci_cd/.env` creado a partir de `staging.env.example` (no se sube al repositorio).
-6. Archivo `04_despliegue_ci_cd/nginx/.htpasswd` con el usuario y la clave del panel (no se sube al repositorio):
+6. En el `.env`, la clave `SESION_SECRETO` con la que se firman las sesiones del panel (`openssl rand -base64 48`).
+7. Usuarios del panel, uno por persona y con su rol (asesor, taller, direccion o admin). Se crean después del primer despliegue; la clave se pide por teclado y se guarda cifrada:
    ```
-   printf 'asesor:%s\n' "$(openssl passwd -apr1)" > nginx/.htpasswd
+   docker compose -f docker-compose.staging.yml exec api python -m app.usuarios crear --nombre "Ana Ruiz" --email ana@joyeria.test --rol asesor
+   docker compose -f docker-compose.staging.yml exec api python -m app.usuarios listar
    ```
+   Otros comandos: `clave --email …` (cambiar la clave), `desactivar --email …` y `activar --email …`.
 
 ## Primer despliegue
 
