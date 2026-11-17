@@ -8,7 +8,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.agente import contexto as ctx
-from app.agente import intereses, menu
+from app.agente import estado_ordenes, intereses, menu
 from app.agente.intenciones import clasificar
 from app.agente.llm import ProveedorLLM
 from app.cache import CacheIdentidad
@@ -94,9 +94,8 @@ def redactar(intencion: str, nombre: str | None, contexto: dict) -> tuple[str, b
         )
     if intencion == "estado_pedido":
         return (
-            "Por ahora no puedo consultar el estado de un pedido desde aquí. Te "
-            "comunico con un asesor para que lo revise contigo; en breve te atenderá "
-            "una persona.",
+            "No encuentro un pedido registrado a tu nombre. Te comunico con un asesor "
+            "para que lo revise contigo; en breve te atenderá una persona.",
             True,
         )
     if intencion == "asesor":
@@ -257,6 +256,14 @@ def atender_mensaje(
             respuesta, escalar = redactar(
                 intencion, cliente.nombre_preferido, cliente.contexto_cualificacion or {}
             )
+            if intencion == "estado_pedido":
+                # Sin modelo también se responde con el estado real; solo pasa a un asesor si
+                # no hay ninguna orden a su nombre (JOY-21).
+                estado = estado_ordenes.para_el_cliente(
+                    session, cliente.id, cliente.nombre_preferido
+                )
+                if estado:
+                    respuesta, escalar = estado, False
             mensajes = menu.enriquecer(
                 session,
                 intencion,
