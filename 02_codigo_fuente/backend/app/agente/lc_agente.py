@@ -334,6 +334,8 @@ def construir_herramientas(
         tema = (tema or "").lower()
         if "contact" in tema or "whatsapp" in tema or "instagram" in tema:
             canales = armar_canales("Hola, quisiera más información.")
+            if not canales:
+                return "El cliente ya escribe por un canal de la joyería: puede seguir por este chat."
             return "Canales: " + ", ".join(f"{c.nombre} {c.enlace}" for c in canales)
         if "pedido" in tema or "orden" in tema or "encargo" in tema:
             return (

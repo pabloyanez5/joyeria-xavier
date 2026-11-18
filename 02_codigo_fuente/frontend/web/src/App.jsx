@@ -45,40 +45,39 @@ function useCanales(mensaje) {
 
 const MENSAJE_GENERAL = 'Hola, quisiera más información sobre sus joyas.'
 
+// Con un solo canal configurado no se pregunta: se ofrece ese y listo.
 function ContactoAsesor({ titulo, mensaje }) {
   const canales = useCanales(mensaje)
   const [canal, setCanal] = useState('whatsapp')
 
   const elegido = canales.find((c) => c.canal === canal) ?? canales[0]
+  if (!elegido) return titulo ? <div className="contacto"><p>{titulo}</p></div> : null
+
+  const varios = canales.length > 1
+  const texto =
+    titulo ??
+    (varios
+      ? 'Elige por dónde prefieres que te atendamos.'
+      : `Escríbenos por ${elegido.nombre} y un asesor te responde.`)
 
   return (
     <div className="contacto">
-      <p>{titulo}</p>
-      {elegido && (
-        <>
-          <label>
-            Canal preferido
-            <select
-              value={elegido.canal}
-              onChange={(e) => setCanal(e.target.value)}
-            >
-              {canales.map((c) => (
-                <option key={c.canal} value={c.canal}>
-                  {c.nombre}
-                </option>
-              ))}
-            </select>
-          </label>
-          <a
-            className="boton primario"
-            href={elegido.enlace}
-            target="_blank"
-            rel="noreferrer"
-          >
-            Contactar a un asesor por {elegido.nombre}
-          </a>
-        </>
+      <p>{texto}</p>
+      {varios && (
+        <label>
+          Canal preferido
+          <select value={elegido.canal} onChange={(e) => setCanal(e.target.value)}>
+            {canales.map((c) => (
+              <option key={c.canal} value={c.canal}>
+                {c.nombre}
+              </option>
+            ))}
+          </select>
+        </label>
       )}
+      <a className="boton primario" href={elegido.enlace} target="_blank" rel="noreferrer">
+        {varios ? `Contactar a un asesor por ${elegido.nombre}` : `Escribir por ${elegido.nombre}`}
+      </a>
     </div>
   )
 }
@@ -492,7 +491,7 @@ function App() {
           <h2>¿Buscas algo distinto?</h2>
           <p>Diseños a medida, otro material o quilataje: cuéntanos y un asesor te ayuda.</p>
         </div>
-        <ContactoAsesor titulo="Elige por dónde prefieres que te atendamos." mensaje={MENSAJE_GENERAL} />
+        <ContactoAsesor mensaje={MENSAJE_GENERAL} />
       </section>
 
       <footer className="sitio-pie">

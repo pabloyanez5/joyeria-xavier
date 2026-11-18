@@ -128,8 +128,12 @@ def extraer_mensajes(payload: dict) -> list[Entrante]:
                 mensaje = evento.get("message")
                 id_canal = evento.get("sender", {}).get("id")
                 if id_canal and mensaje and not mensaje.get("is_echo"):
+                    # Si tocó una respuesta rápida, llega su texto y el id de la opción.
+                    accion = (mensaje.get("quick_reply") or {}).get("payload")
                     mensajes.append(
-                        Entrante(canal, id_canal, None, mensaje.get("text"), mensaje.get("mid"))
+                        Entrante(
+                            canal, id_canal, None, mensaje.get("text"), mensaje.get("mid"), accion
+                        )
                     )
     return mensajes
 
