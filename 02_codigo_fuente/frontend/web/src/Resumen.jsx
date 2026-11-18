@@ -77,7 +77,7 @@ export default function Resumen() {
   return (
     <section aria-label="Resumen del negocio">
       <h2 className="cola-titulo">
-        Resumen
+        Indicadores
         <span className="periodos" role="group" aria-label="Periodo">
           {PERIODOS.map((p) => (
             <button

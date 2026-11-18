@@ -1,15 +1,90 @@
+/* Marca Joyería Xavier (JOY-88): colores tomados de su logo. Todo el sistema usa estas
+   variables; el panel cambia a tema oscuro con data-tema="oscuro" en <html>. El catálogo
+   público siempre usa el tema claro. */
 :root {
-  --fondo: #faf8f5;
+  /* superficies y texto */
+  --fondo: #fff8f4;
   --tarjeta: #ffffff;
-  --tinta: #1f1b16;
-  --suave: #6b645a;
-  --linea: #e6e0d6;
-  --oro: #b08a3e;
-  --oro-oscuro: #8a6a28;
-  font-family: system-ui, 'Segoe UI', Roboto, sans-serif;
+  --lateral: #fcede5;
+  --tenue: #fbf1eb;
+  --campo: #ffffff;
+  --tinta: #2b201c;
+  --suave: #6e5a51;
+  --linea: #f0ddd2;
+  --linea-fuerte: #e2c7b9;
+  /* marca y acciones (el durazno no lleva texto blanco: para botones va el terracota) */
+  --marca: #f3a386;
+  --oro: #e2a58b;
+  --oro-oscuro: #a84e33;
+  --accion-texto: #ffffff;
+  /* estados */
+  --aviso-fondo: #fce7cf;
+  --aviso-texto: #6e3f0e;
+  --ok-fondo: #ddefe2;
+  --ok-texto: #1f5a33;
+  --peligro-fondo: #f6d9d2;
+  --peligro-texto: #8a2a1c;
+  --peligro: #a23b2a;
+  --neutro-fondo: #f3e7e0;
+  --neutro-texto: #5a4a42;
+  /* mensajes del chat */
+  --burbuja-agente: #fbf1eb;
+  --burbuja-agente-texto: #2b201c;
+  --burbuja-cliente: #3a2a24;
+  --burbuja-cliente-texto: #fff8f4;
+  --burbuja-asesor: #f6ddcb;
+  --burbuja-asesor-texto: #2b201c;
+  /* etapas de la orden */
+  --etapa-por-verificar: #d98e2b;
+  --etapa-cola: #6f7f8f;
+  --etapa-produccion: #c2603f;
+  --etapa-terminada: #3e78b2;
+  --etapa-entregada: #3f8a55;
+  --etapa-cancelada: #8a8278;
+  /* sombras y velos */
+  --velo: rgba(43, 32, 28, 0.55);
+  --sombra: rgba(43, 32, 28, 0.18);
+
+  --letra: 'Inter Variable', system-ui, 'Segoe UI', Roboto, sans-serif;
+  --letra-titulos: 'EB Garamond', Georgia, 'Times New Roman', serif;
+  font-family: var(--letra);
   color: var(--tinta);
   background: var(--fondo);
   color-scheme: light;
+}
+
+:root[data-tema='oscuro'] {
+  --fondo: #1a1514;
+  --tarjeta: #241d1b;
+  --lateral: #201918;
+  --tenue: #2c2321;
+  --campo: #1f1918;
+  --tinta: #f5ece7;
+  --suave: #bca9a0;
+  --linea: #3a2f2b;
+  --linea-fuerte: #4a3d38;
+  --marca: #f3a386;
+  --oro: #8c5a47;
+  --oro-oscuro: #f3a386;
+  --accion-texto: #2b201c;
+  --aviso-fondo: #3b2b17;
+  --aviso-texto: #f2c58a;
+  --ok-fondo: #1e3326;
+  --ok-texto: #9bd4ae;
+  --peligro-fondo: #3d211c;
+  --peligro-texto: #f2a99c;
+  --peligro: #c4513d;
+  --neutro-fondo: #2e2522;
+  --neutro-texto: #d8c8c0;
+  --burbuja-agente: #2c2321;
+  --burbuja-agente-texto: #f5ece7;
+  --burbuja-cliente: #f3a386;
+  --burbuja-cliente-texto: #2b201c;
+  --burbuja-asesor: #3a2a20;
+  --burbuja-asesor-texto: #f5ece7;
+  --velo: rgba(0, 0, 0, 0.6);
+  --sombra: rgba(0, 0, 0, 0.45);
+  color-scheme: dark;
 }
 
 * {
@@ -19,4 +94,6 @@
 body {
   margin: 0;
   min-height: 100vh;
+  background: var(--fondo);
+  color: var(--tinta);
 }

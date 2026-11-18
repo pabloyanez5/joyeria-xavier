@@ -131,7 +131,7 @@ export default function Conversaciones({ onCrearOrden }) {
   return (
     <section className="conversaciones" aria-label="Conversaciones">
       <h2 className="cola-titulo">
-        Conversaciones <span>({lista.length})</span>
+        Bandeja <span>({lista.length})</span>
         {escaladas > 0 && <span className="insignia estado-escalada">{escaladas} esperan asesor</span>}
         <button type="button" onClick={() => setVersion((v) => v + 1)}>
           Actualizar
