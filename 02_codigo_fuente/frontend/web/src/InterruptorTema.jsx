@@ -8,10 +8,11 @@ export default function InterruptorTema({ tema, onAlternar }) {
       role="switch"
       aria-checked={tema === 'oscuro'}
       className="interruptor-tema"
+      aria-label="Modo oscuro"
       onClick={onAlternar}
     >
       <Icono nombre="luna" />
-      Modo oscuro
+      <span className="interruptor-texto">Modo oscuro</span>
       <span className="interruptor" aria-hidden="true">
         <span />
       </span>

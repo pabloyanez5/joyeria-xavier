@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import Acceso from './Acceso.jsx'
 import Icono from './Icono.jsx'
 import InterruptorTema from './InterruptorTema.jsx'
+import PanelLateral from './PanelLateral.jsx'
 import Conversaciones from './Conversaciones.jsx'
 import FormularioOrden from './FormularioOrden.jsx'
 import Resumen from './Resumen.jsx'
@@ -100,6 +101,7 @@ function PanelInterno({ usuario, tema, onAlternarTema }) {
   const [precarga, setPrecarga] = useState({ turno: 0, inicial: null })
   const [aviso, setAviso] = useState(null)
   const [vista, setVista] = useState(vistas[0]?.id ?? null)
+  const [formAbierto, setFormAbierto] = useState(false)
 
   useEffect(() => {
     if (!esAsesor) return // solo el asesor crea órdenes: los demás no necesitan estas listas
@@ -116,6 +118,7 @@ function PanelInterno({ usuario, tema, onAlternarTema }) {
   }, [version, esAsesor])
 
   function ordenCreada(texto) {
+    setFormAbierto(false)
     setAviso({ tipo: 'ok', texto })
     setPrecarga((p) => ({ turno: p.turno + 1, inicial: null }))
     setVersion((v) => v + 1)
@@ -129,6 +132,7 @@ function PanelInterno({ usuario, tema, onAlternarTema }) {
       texto: 'Datos precargados desde la conversación. Complétalos con el cliente y crea la orden.',
     })
     setVista('ordenes')
+    setFormAbierto(true)
   }
 
   const actual = vistas.find((v) => v.id === vista)
@@ -156,32 +160,48 @@ function PanelInterno({ usuario, tema, onAlternarTema }) {
 
       {vista === 'ordenes' && (
         <>
-      {esAsesor && (
-        <>
-      {errorCarga && <p className="estado error">{errorCarga}</p>}
-
-      <FormularioOrden
-        key={precarga.turno}
-        clientes={clientes}
-        productos={productos}
-        inicial={precarga.inicial}
-        onCreada={ordenCreada}
-      />
-
-      {clientes.length === 0 && !errorCarga && (
-        <p className="estado">
-          Todavía no hay clientes. Escríbele al asistente desde el catálogo para crear uno.
-        </p>
-      )}
-      {aviso && <p className={`estado ${aviso.tipo === 'error' ? 'error' : 'ok'}`}>{aviso.texto}</p>}
-        </>
-      )}
-
-      <Tablero
-        version={version}
-        puedeAvanzar={puede(usuario, 'taller')}
-        puedeVerificar={esAsesor}
-      />
+          {esAsesor && aviso && (
+            <p className={`estado ${aviso.tipo === 'error' ? 'error' : 'ok'}`} role="status">
+              {aviso.texto}
+            </p>
+          )}
+          <Tablero
+            version={version}
+            puedeAvanzar={puede(usuario, 'taller')}
+            puedeVerificar={esAsesor}
+            onNuevaOrden={
+              esAsesor
+                ? () => {
+                    setAviso(null)
+                    setFormAbierto(true)
+                  }
+                : undefined
+            }
+          />
+          {esAsesor && formAbierto && (
+            <PanelLateral
+              titulo="Nueva orden"
+              subtitulo="Una o varias joyas del mismo cliente"
+              onCerrar={() => setFormAbierto(false)}
+            >
+              {errorCarga && <p className="estado error">{errorCarga}</p>}
+              {clientes.length === 0 && !errorCarga && (
+                <p className="nota">
+                  Todavía no hay clientes. Escríbele al asistente desde el catálogo para crear uno.
+                </p>
+              )}
+              {aviso && (
+                <p className={`estado ${aviso.tipo === 'error' ? 'error' : 'ok'}`}>{aviso.texto}</p>
+              )}
+              <FormularioOrden
+                key={precarga.turno}
+                clientes={clientes}
+                productos={productos}
+                inicial={precarga.inicial}
+                onCreada={ordenCreada}
+              />
+            </PanelLateral>
+          )}
         </>
       )}
     </main>
