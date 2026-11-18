@@ -1,3 +1,4 @@
+import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app
@@ -38,3 +39,10 @@ def test_codifica_el_mensaje(monkeypatch):
     monkeypatch.setenv("JOYERIA_WHATSAPP", "593000")
     canales = client.get("/contacto", params={"mensaje": "oro 24k & talla 9"}).json()
     assert "%26" in canales[0]["enlace"]
+
+@pytest.mark.parametrize("numero", ["+1 555-187-9467", "(1) 555 187 9467", "15551879467"])
+def test_el_numero_queda_solo_con_digitos(monkeypatch, numero):
+    # Con guiones, wa.me lo tomaba como nombre de usuario y no abría el chat del bot.
+    monkeypatch.setenv("JOYERIA_WHATSAPP", numero)
+    canales = client.get("/contacto", params={"mensaje": "Hola"}).json()
+    assert canales[0]["enlace"] == "https://wa.me/15551879467?text=Hola"

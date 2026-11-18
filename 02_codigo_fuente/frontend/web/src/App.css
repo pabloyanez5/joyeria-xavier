@@ -2164,6 +2164,11 @@ button.enlace {
   gap: 14px;
 }
 
+/* Seguridad del agente (JOY-74): ocupa la fila completa, debajo de los demás. */
+.indicador.ancho {
+  grid-column: 1 / -1;
+}
+
 .indicador {
   display: flex;
   flex-direction: column;

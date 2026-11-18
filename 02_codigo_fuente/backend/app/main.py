@@ -11,6 +11,7 @@ from app.agente.rutas import router as agente_router
 from app.catalogo import router as catalogo_router
 from app.clientes_rutas import router as clientes_router
 from app.contacto import router as contacto_router
+from app.intentos import router as intentos_router
 from app.conversaciones import router as conversaciones_router
 from app.metricas import router as metricas_router
 from app.ordenes import router as ordenes_router
@@ -41,6 +42,7 @@ app.include_router(webhook_router)
 app.include_router(acceso_router)
 app.include_router(catalogo_router)
 app.include_router(contacto_router)
+app.include_router(intentos_router)
 app.include_router(agente_router)
 app.include_router(clientes_router)
 app.include_router(ordenes_router)

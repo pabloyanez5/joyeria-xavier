@@ -40,9 +40,9 @@ function diaDe(iso) {
   return { semana: DIA_SEMANA.format(fecha).replace('.', ''), fecha: `${String(dia).padStart(2, '0')}/${String(mes).padStart(2, '0')}` }
 }
 
-function Indicador({ titulo, valor, nota, destacado, children }) {
+function Indicador({ titulo, valor, nota, destacado, ancho, children }) {
   return (
-    <div className={`indicador ${destacado ? 'destacado' : ''}`}>
+    <div className={`indicador ${destacado ? 'destacado' : ''} ${ancho ? 'ancho' : ''}`}>
       <span className="indicador-titulo">{titulo}</span>
       <strong className="indicador-valor">{valor}</strong>
       {children}
@@ -150,6 +150,8 @@ export default function Resumen() {
 
   const tasa = datos.tasa_resolucion_agente
   const esperan = datos.por_estado.escalada ?? 0
+  const intentos = datos.intentos_bloqueados ?? {}
+  const bloqueados = Object.values(intentos).reduce((suma, n) => suma + n, 0)
   const activas = datos.ordenes_por_etapa
     .filter((e) => !['entregada', 'cancelada'].includes(e.etapa))
     .reduce((suma, e) => suma + e.ordenes, 0)
@@ -201,6 +203,16 @@ export default function Resumen() {
           nota="Desde que se crea la orden hasta que se entrega"
         />
         <Indicador titulo="Clientes" valor={datos.clientes} nota="Registrados por todos los canales" />
+        <Indicador
+          titulo="Intentos bloqueados"
+          valor={bloqueados}
+          ancho
+          nota={
+            bloqueados === 0
+              ? 'La seguridad del agente no bloqueó nada en el periodo'
+              : `${intentos.instrucciones ?? 0} por manipular al agente · ${intentos.limite_de_mensajes ?? 0} por exceso de mensajes · ${intentos.respuesta_corregida ?? 0} respuestas corregidas`
+          }
+        />
       </div>
 
       <div className="graficos">

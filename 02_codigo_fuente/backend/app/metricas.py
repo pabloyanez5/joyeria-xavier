@@ -12,6 +12,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.acceso import requiere
+from app.intentos import conteo_por_motivo
 from app.db import get_session
 from app.models import (
     Cliente,
@@ -53,6 +54,8 @@ class Metricas(BaseModel):
     ordenes_con_acuse_pendiente: int
     horas_promedio_entrega: float | None
     conversaciones_por_dia: list[DiaConversaciones]
+    # Lo que bloqueó la seguridad del agente en el periodo, por motivo (JOY-74).
+    intentos_bloqueados: dict[str, int]
 
 
 def _como_utc(valor: datetime) -> datetime:
@@ -143,4 +146,5 @@ def metricas(
         conversaciones_por_dia=[
             DiaConversaciones(dia=d, conversaciones=n) for d, n in por_dia.items()
         ],
+        intentos_bloqueados=conteo_por_motivo(session, desde),
     )
