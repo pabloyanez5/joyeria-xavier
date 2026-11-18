@@ -262,6 +262,7 @@ class OrdenOut(BaseModel):
     acuse_en: datetime | None = None
     publicada_en: datetime | None
     creado_en: datetime | None
+    actualizado_en: datetime | None = None  # el tablero oculta lo cerrado hace más de 30 días
     siguiente_etapa: str | None = None
     etapa_anterior: str | None = None  # a dónde la puede devolver el asesor (JOY-23)
     ultimo_cambio: str | None = None  # la última modificación, retroceso o cancelación
@@ -336,6 +337,7 @@ def armar_salida(session: Session, orden: Orden) -> OrdenOut:
         acuse_en=orden.acuse_en,
         publicada_en=orden.publicada_en,
         creado_en=orden.creado_en,
+        actualizado_en=orden.actualizado_en,
         siguiente_etapa=siguiente_etapa(orden.etapa_actual),
         etapa_anterior=RETROCESOS.get(orden.etapa_actual),
         ultimo_cambio=_ultimo_cambio(session, orden),

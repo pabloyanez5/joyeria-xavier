@@ -7,6 +7,15 @@ const PERIODOS = [
   { dias: 30, texto: '30 días' },
   { dias: 90, texto: '90 días' },
 ]
+// Cada etapa con su color del tema (los mismos del tablero).
+const COLOR_ETAPA = {
+  por_verificar: 'var(--etapa-por-verificar)',
+  en_cola: 'var(--etapa-cola)',
+  en_produccion: 'var(--etapa-produccion)',
+  terminada: 'var(--etapa-terminada)',
+  entregada: 'var(--etapa-entregada)',
+  cancelada: 'var(--etapa-cancelada)',
+}
 const NOMBRE_ETAPA = {
   por_verificar: 'Por verificar',
   en_cola: 'En cola',
@@ -35,7 +44,10 @@ function Barras({ filas, clase = '' }) {
         <li key={f.nombre}>
           <span className="barra-nombre">{f.nombre}</span>
           <span className="barra-pista">
-            <span className={`barra-relleno ${clase}`} style={{ width: `${(f.valor * 100) / maximo}%` }} />
+            <span
+              className={`barra-relleno ${clase}`}
+              style={{ width: `${(f.valor * 100) / maximo}%`, ...(f.color ? { background: f.color } : {}) }}
+            />
           </span>
           <span className="barra-valor">{f.valor}</span>
         </li>
@@ -128,7 +140,11 @@ export default function Resumen() {
           <h3>Órdenes por etapa</h3>
           <Barras
             clase="produccion"
-            filas={datos.ordenes_por_etapa.map((e) => ({ nombre: NOMBRE_ETAPA[e.etapa], valor: e.ordenes }))}
+            filas={datos.ordenes_por_etapa.map((e) => ({
+              nombre: NOMBRE_ETAPA[e.etapa],
+              valor: e.ordenes,
+              color: COLOR_ETAPA[e.etapa],
+            }))}
           />
         </article>
         <article className="panel-tarjeta">

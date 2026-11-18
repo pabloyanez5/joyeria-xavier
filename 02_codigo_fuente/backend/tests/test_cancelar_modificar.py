@@ -214,3 +214,9 @@ def test_la_foto_se_puede_cambiar_o_quitar(api, datos, foto, esperado):
     orden = _orden(api, datos, foto_referencia_url="https://x.com/vieja.jpg")
     r = api.patch(f"/ordenes/{orden['id']}", json={"foto_referencia_url": foto, "motivo": "Otra foto"})
     assert r.status_code == 200 and r.json()["foto_referencia_url"] == esperado
+
+
+def test_la_orden_dice_cuando_cambio_por_ultima_vez(api, datos):
+    # JOY-89: el tablero oculta lo entregado o cancelado hace más de 30 días.
+    orden = _orden(api, datos)
+    assert orden["actualizado_en"] is not None
