@@ -482,134 +482,6 @@ a.boton {
   color: var(--suave);
 }
 
-/* ---- Resumen del negocio (RF-06) ---- */
-
-.periodos {
-  display: inline-flex;
-  gap: 4px;
-  margin-left: 12px;
-}
-
-.periodos button {
-  margin-left: 0;
-  padding: 3px 10px;
-  border-radius: 999px;
-  font-size: 0.78rem;
-}
-
-.periodos button.activa {
-  background: var(--oro-oscuro);
-  border-color: var(--oro-oscuro);
-  color: var(--accion-texto);
-}
-
-.datos {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
-  margin-bottom: 16px;
-}
-
-.dato {
-  background: var(--tarjeta);
-  border: 1px solid var(--linea);
-  border-radius: 12px;
-  padding: 14px 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.dato-titulo {
-  color: var(--suave);
-  font-size: 0.8rem;
-}
-
-.dato-valor {
-  font-size: 1.9rem;
-  line-height: 1.2;
-}
-
-.dato small {
-  color: var(--suave);
-}
-
-.paneles {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.panel-tarjeta {
-  background: var(--tarjeta);
-  border: 1px solid var(--linea);
-  border-radius: 12px;
-  padding: 14px 16px;
-}
-
-.panel-tarjeta h3 {
-  margin: 0 0 10px;
-  font-size: 0.95rem;
-}
-
-.barras {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  font-size: 0.82rem;
-}
-
-.barras li {
-  display: grid;
-  grid-template-columns: 96px 1fr 28px;
-  align-items: center;
-  gap: 8px;
-}
-
-.barra-pista {
-  background: var(--tenue);
-  border-radius: 6px;
-  height: 12px;
-  overflow: hidden;
-}
-
-.barra-relleno {
-  display: block;
-  height: 100%;
-  background: var(--oro);
-  border-radius: 6px;
-}
-
-.barra-relleno.produccion {
-  background: var(--etapa-terminada);
-}
-
-.barra-relleno.mensajes {
-  background: var(--etapa-entregada);
-}
-
-.barra-valor {
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-}
-
-@media (max-width: 900px) {
-  .datos,
-  .paneles {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
-@media (max-width: 560px) {
-  .datos,
-  .paneles {
-    grid-template-columns: 1fr;
-  }
-}
-
 /* Inicio de sesión del panel (JOY-78) */
 /* Orden completa, pedidos y verificación del abono (JOY-79 y JOY-22) */
 .orden-form {
@@ -2281,5 +2153,278 @@ button.enlace {
 
   .conv-mensajes .burbuja {
     max-width: 88%;
+  }
+}
+
+/* ---- JOY-92: resumen de dirección ---- */
+
+.resumen {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.resumen-barra {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+.resumen-barra .nota {
+  margin-left: auto;
+}
+
+.indicadores {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.indicador {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 18px 20px;
+  border: 1px solid var(--linea);
+  border-radius: 16px;
+  background: var(--tarjeta);
+}
+
+.indicador.destacado {
+  border-color: var(--etapa-por-verificar);
+  box-shadow: 0 0 0 1px var(--etapa-por-verificar);
+}
+
+.indicador-titulo {
+  font-size: 0.85rem;
+  color: var(--suave);
+}
+
+.indicador-valor {
+  font-family: var(--letra-titulos);
+  font-size: 2.9rem;
+  font-weight: 500;
+  line-height: 1;
+}
+
+.indicador small {
+  color: var(--suave);
+  line-height: 1.4;
+}
+
+.medidor {
+  display: block;
+  height: 8px;
+  border-radius: 4px;
+  background: var(--tenue);
+  overflow: hidden;
+}
+
+.medidor span {
+  display: block;
+  height: 100%;
+  border-radius: 4px;
+  background: var(--etapa-entregada);
+}
+
+.graficos {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.grafico {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 18px 20px;
+  border: 1px solid var(--linea);
+  border-radius: 16px;
+  background: var(--tarjeta);
+}
+
+.grafico h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.grafico > .nota {
+  margin: 0 0 12px;
+  font-size: 0.8rem;
+}
+
+.columnas {
+  flex: 1;
+  min-height: 190px;
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.columnas li {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.columna-valor {
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.columna-pista {
+  flex: 1;
+  width: 100%;
+  max-width: 34px;
+  display: flex;
+  align-items: flex-end;
+  border-radius: 8px;
+  background: var(--tenue);
+}
+
+.columna-relleno {
+  display: block;
+  width: 100%;
+  min-height: 3px;
+  border-radius: 8px;
+  background: var(--marca);
+}
+
+:root[data-tema='oscuro'] .columna-relleno {
+  background: var(--oro-oscuro);
+}
+
+.columna-dia {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  font-size: 0.72rem;
+  color: var(--suave);
+  text-transform: capitalize;
+}
+
+.columna-dia small {
+  font-size: 0.65rem;
+}
+
+.barras {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.85rem;
+}
+
+.barras li {
+  display: grid;
+  grid-template-columns: 120px minmax(0, 1fr) 32px;
+  align-items: center;
+  gap: 10px;
+}
+
+.barra-nombre {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.barra-pista {
+  height: 12px;
+  border-radius: 6px;
+  background: var(--tenue);
+  overflow: hidden;
+}
+
+.barra-relleno {
+  display: block;
+  height: 100%;
+  border-radius: 6px;
+  background: var(--etapa-cancelada);
+}
+
+.barra-relleno.por_verificar { background: var(--etapa-por-verificar); }
+.barra-relleno.en_cola { background: var(--etapa-cola); }
+.barra-relleno.en_produccion { background: var(--etapa-produccion); }
+.barra-relleno.terminada { background: var(--etapa-terminada); }
+.barra-relleno.entregada { background: var(--etapa-entregada); }
+
+.barra-valor {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.reparto {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.reparto-barra {
+  display: flex;
+  gap: 3px;
+  height: 18px;
+  border-radius: 9px;
+  overflow: hidden;
+  background: var(--tenue);
+}
+
+.reparto-barra span {
+  flex-basis: 0;
+}
+
+.autor-cliente { background: var(--etapa-terminada); }
+.autor-agente { background: var(--marca); }
+.autor-asesor { background: var(--etapa-produccion); }
+.autor-sistema { background: var(--etapa-cola); }
+
+.reparto-leyenda {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.85rem;
+}
+
+.reparto-leyenda li {
+  display: grid;
+  grid-template-columns: auto 1fr auto 52px;
+  align-items: center;
+  gap: 8px;
+}
+
+.reparto-leyenda strong {
+  font-variant-numeric: tabular-nums;
+}
+
+.reparto-leyenda small {
+  text-align: right;
+  color: var(--suave);
+}
+
+@media (max-width: 1100px) {
+  .indicadores,
+  .graficos {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 600px) {
+  .indicadores,
+  .graficos {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .indicador-valor {
+    font-size: 2.3rem;
   }
 }
