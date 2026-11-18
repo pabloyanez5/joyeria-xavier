@@ -34,6 +34,8 @@ const fechaCorta = (iso) => (iso ? iso.split('-').reverse().slice(0, 2).join('/'
 const diaIso = (ms) => new Date(ms).toLocaleDateString('en-CA') // AAAA-MM-DD en hora local
 
 const FILTROS_VACIOS = { q: '', etapa: '', desde: '', hasta: '' }
+const NOMBRE_CANAL = { whatsapp: 'WhatsApp', messenger: 'Messenger', instagram: 'Instagram' }
+const canalDe = (orden) => NOMBRE_CANAL[orden.canal] ?? 'su canal'
 
 // Vista de órdenes que eligió la persona (tablero o lista), recordada en este navegador.
 const CLAVE_VISTA = 'joyeria.vista_ordenes'
@@ -245,7 +247,7 @@ function DetalleOrden({ orden, puedeAvanzar, puedeVerificar, avisar, ocupada, ac
           <button type="submit" className="boton primario" disabled={ocupada}>
             {ocupada ? 'Registrando…' : 'Registrar abono y pasar al taller'}
           </button>
-          <small>{avisar ? 'Se avisará al cliente por WhatsApp.' : 'No se avisará al cliente.'}</small>
+          <small>{avisar ? `Se avisará al cliente por ${canalDe(orden)}.` : 'No se avisará al cliente.'}</small>
         </form>
       )}
       {orden.etapa_actual === 'por_verificar' && !puedeVerificar && (
@@ -264,7 +266,7 @@ function DetalleOrden({ orden, puedeAvanzar, puedeVerificar, avisar, ocupada, ac
               {ocupada ? 'Avanzando…' : `Pasar a ${nombreEtapa(orden.siguiente_etapa).toLowerCase()}`}
             </button>
           )}
-          <small>{avisar ? 'Se avisará al cliente por WhatsApp.' : 'No se avisará al cliente.'}</small>
+          <small>{avisar ? `Se avisará al cliente por ${canalDe(orden)}.` : 'No se avisará al cliente.'}</small>
         </div>
       )}
 
@@ -571,7 +573,7 @@ export default function Tablero({
         {(puedeAvanzar || puedeVerificar) && (
           <label className="tablero-avisar">
             <input type="checkbox" checked={avisar} onChange={(e) => setAvisar(e.target.checked)} />
-            Avisar al cliente por WhatsApp
+            Avisar al cliente por su canal
           </label>
         )}
         <button type="button" onClick={cargar} aria-label="Actualizar el tablero" title="Actualizar">

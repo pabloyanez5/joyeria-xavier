@@ -244,6 +244,7 @@ class OrdenOut(BaseModel):
     pedido: str | None = None  # código del pedido que agrupa varias órdenes
     cliente_id: int
     cliente: str | None
+    canal: str | None = None  # por dónde se avisa al cliente: whatsapp, messenger o instagram
     producto_id: int | None
     producto: str | None
     descripcion: str
@@ -308,6 +309,7 @@ def _nombre_de_usuario(session: Session, usuario_id: int | None) -> str | None:
 
 
 def armar_salida(session: Session, orden: Orden) -> OrdenOut:
+    cliente = session.get(Cliente, orden.cliente_id)
     producto = session.get(Producto, orden.producto_id) if orden.producto_id else None
     saldo = None
     if orden.total is not None:
@@ -318,7 +320,8 @@ def armar_salida(session: Session, orden: Orden) -> OrdenOut:
         pedido_id=orden.pedido_id,
         pedido=codigo_de_pedido(orden.pedido_id),
         cliente_id=orden.cliente_id,
-        cliente=nombre_de(session.get(Cliente, orden.cliente_id)),
+        cliente=nombre_de(cliente),
+        canal=cliente.canal if cliente else None,
         producto_id=orden.producto_id,
         producto=producto.nombre if producto else None,
         descripcion=orden.descripcion,
@@ -651,6 +654,23 @@ def historial_de_etapas(orden_id: int, session: Session = Depends(get_session)):
 
 # --- avanzar ---
 
+NOMBRE_DEL_CANAL = {"whatsapp": "WhatsApp", "messenger": "Messenger", "instagram": "Instagram"}
+# Lo que responde Meta cuando el cliente no escribe hace más de 24 horas (WhatsApp 131047;
+# Messenger e Instagram, error 10 con subcódigo 2018278 o 2534022).
+_FUERA_DE_VENTANA = ("131047", "2018278", "2534022", "outside of allowed window", "re-engagement")
+
+
+def motivo_legible(canal: str, error: str) -> str:
+    """El error de Meta, dicho para el asesor o el taller."""
+    nombre = NOMBRE_DEL_CANAL.get(canal, canal)
+    if any(marca in error for marca in _FUERA_DE_VENTANA):
+        return (
+            f"El cliente no escribe hace más de 24 horas y {nombre} solo permite avisarle "
+            "cuando vuelva a escribir. La orden quedó registrada igual."
+        )
+    return error[:200]
+
+
 def _avisar_al_cliente(
     session: Session, orden: Orden, enviador: Enviador | None
 ) -> tuple[str, str | None]:
@@ -662,7 +682,7 @@ def _avisar_al_cliente(
     try:
         enviado = enviador.enviar(cliente.canal, cliente.id_canal, texto)
     except ErrorMeta as e:
-        return "no_enviado", str(e)[:200]
+        return "no_enviado", motivo_legible(cliente.canal, str(e))
     if not enviado:
         return "omitido", f"El envío por {cliente.canal} todavía no está disponible"
     abierta = session.scalar(
