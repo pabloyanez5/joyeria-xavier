@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import Icono from './Icono.jsx'
 import { pedir } from './sesion.js'
 import { hora, leer } from './util.js'
 
@@ -13,12 +14,29 @@ const ORIGEN = {
   guardrail: 'seguridad',
 }
 const ACTUALIZAR_CADA_MS = 8000
+const NOMBRE_CANAL = { whatsapp: 'WhatsApp', messenger: 'Messenger', instagram: 'Instagram' }
+const FILTROS = [
+  { id: 'todas', titulo: 'Todas', estado: null },
+  { id: 'escalada', titulo: 'Esperan asesor', estado: 'escalada' },
+  { id: 'activa', titulo: 'Con el agente', estado: 'activa' },
+  { id: 'cerrada', titulo: 'Cerradas', estado: 'cerrada' },
+]
+const formatoHoraCorta = new Intl.DateTimeFormat('es-EC', { timeStyle: 'short' })
+const formatoDia = new Intl.DateTimeFormat('es-EC', { day: '2-digit', month: '2-digit' })
+// Hora si fue hoy; si no, el día.
+function horaCorta(valor) {
+  if (!valor) return ''
+  const momento = new Date(valor)
+  const hoy = new Date().toDateString() === momento.toDateString()
+  return hoy ? formatoHoraCorta.format(momento) : formatoDia.format(momento)
+}
 const NOMBRE_ETAPA = {
   por_verificar: 'Por verificar',
   en_cola: 'En cola',
   en_produccion: 'En producción',
   terminada: 'Terminada',
   entregada: 'Entregada',
+  cancelada: 'Cancelada',
 }
 
 function Estado({ valor }) {
@@ -48,6 +66,7 @@ export default function Conversaciones({ onCrearOrden }) {
   const [aviso, setAviso] = useState(null)
   const [texto, setTexto] = useState('')
   const [ocupado, setOcupado] = useState(false)
+  const [filtro, setFiltro] = useState(null) // null = todas
   const caja = useRef(null)
 
   const idActual = elegida ?? lista[0]?.id ?? null
@@ -126,202 +145,220 @@ export default function Conversaciones({ onCrearOrden }) {
     if (caja.current) caja.current.scrollTop = caja.current.scrollHeight
   }, [idActual, totalMensajes])
 
-  const escaladas = lista.filter((c) => c.estado === 'escalada').length
+  const cuenta = (estado) => lista.filter((c) => !estado || c.estado === estado).length
+  const visibles = lista.filter((c) => !filtro || c.estado === filtro)
+
+  function elegir(id) {
+    setElegida(id)
+    setAviso(null)
+  }
+
+  function crearOrden(intereses) {
+    onCrearOrden({
+      clienteId: String(d.orden_sugerida.cliente_id),
+      descripciones: intereses ? intereses.map((i) => i.descripcion_de_orden) : [d.orden_sugerida.descripcion],
+      ...(intereses ? { intereses: intereses.map((i) => i.numero) } : {}),
+    })
+  }
+
+  if (error && lista.length === 0) return <p className="estado error">{error}</p>
+  if (lista.length === 0) {
+    return (
+      <p className="estado">
+        Todavía no hay conversaciones. Escribe al número de WhatsApp, a la página de Messenger o usa el
+        chat del catálogo.
+      </p>
+    )
+  }
 
   return (
-    <section className="conversaciones" aria-label="Conversaciones">
-      <h2 className="cola-titulo">
-        Bandeja <span>({lista.length})</span>
-        {escaladas > 0 && <span className="insignia estado-escalada">{escaladas} esperan asesor</span>}
-        <button type="button" onClick={() => setVersion((v) => v + 1)}>
-          Actualizar
-        </button>
-      </h2>
-      {error && <p className="estado error">{error}</p>}
-      {lista.length === 0 && !error && (
-        <p className="estado">
-          Todavía no hay conversaciones. Escribe al número de WhatsApp o usa el chat del catálogo.
-        </p>
-      )}
-
-      {lista.length > 0 && (
-        <div className="conv-rejilla">
-          <ul className="conv-lista">
-            {lista.map((c) => (
-              <li key={c.id}>
-                <button
-                  type="button"
-                  className={`conv-item ${c.id === idActual ? 'elegida' : ''} ${c.estado}`}
-                  onClick={() => {
-                    setElegida(c.id)
-                    setAviso(null)
-                  }}
-                >
+    <div className="conv-rejilla">
+      <aside className="conv-bandeja" aria-label="Bandeja de conversaciones">
+        <div className="conv-bandeja-cabeza">
+          <h2>
+            Bandeja <span>({lista.length})</span>
+          </h2>
+          <button
+            type="button"
+            className="boton-icono"
+            onClick={() => setVersion((v) => v + 1)}
+            aria-label="Actualizar la bandeja"
+            title="Actualizar"
+          >
+            <Icono nombre="actualizar" tamano={16} />
+          </button>
+        </div>
+        <div className="conv-filtros" role="group" aria-label="Filtrar conversaciones">
+          {FILTROS.map((f) => (
+            <button key={f.id} type="button" aria-pressed={filtro === f.estado} onClick={() => setFiltro(f.estado)}>
+              {f.titulo} · {cuenta(f.estado)}
+            </button>
+          ))}
+        </div>
+        {error && <p className="estado error">{error}</p>}
+        <ul className="conv-lista">
+          {visibles.length === 0 && <li className="nota">No hay conversaciones en este grupo.</li>}
+          {visibles.map((c) => (
+            <li key={c.id}>
+              <button
+                type="button"
+                className={`conv-item ${c.estado}`}
+                aria-current={c.id === idActual ? 'true' : undefined}
+                onClick={() => elegir(c.id)}
+              >
+                <span className="avatar" aria-hidden="true">
+                  {(c.cliente ?? '?').trim().charAt(0).toUpperCase()}
+                </span>
+                <span className="conv-item-texto">
                   <span className="conv-fila">
                     <strong>{c.cliente}</strong>
-                    <span className="conv-hora">{hora(c.actualizado_en)}</span>
-                  </span>
-                  <span className="conv-fila">
-                    <Estado valor={c.estado} />
-                    <span className="conv-canal">{c.canal}</span>
+                    <span className="conv-hora">{horaCorta(c.actualizado_en)}</span>
                   </span>
                   <span className="conv-vista">
                     {c.ultimo_autor ? `${AUTOR[c.ultimo_autor]}: ` : ''}
                     {c.ultimo_mensaje ?? 'Sin mensajes'}
                   </span>
-                </button>
-              </li>
-            ))}
-          </ul>
+                  <span className="conv-fila">
+                    <Estado valor={c.estado} />
+                    <span className="conv-canal">{NOMBRE_CANAL[c.canal] ?? c.canal}</span>
+                  </span>
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      </aside>
 
-          <article className="conv-detalle">
-            {!d && <p className="estado">Cargando conversación…</p>}
-            {d && (
-              <>
-                <header className="conv-cabecera">
-                  <div>
-                    <h3>{d.cliente}</h3>
-                    <p className="nota">
-                      Conversación #{d.id} · {d.canal} · {d.total_mensajes} mensajes
-                      {d.ordenes_activas > 0 && ` · ${d.ordenes_activas} orden(es) activa(s)`}
-                    </p>
-                  </div>
-                  <Estado valor={d.estado} />
-                </header>
-
-                {d.motivo_escalamiento && (
-                  <p className="conv-motivo">Motivo de la derivación: {d.motivo_escalamiento}</p>
+      {!d && <p className="estado conv-cargando">Cargando conversación…</p>}
+      {d && (
+        <>
+          <section className="conv-chat" aria-label={`Chat con ${d.cliente}`}>
+            <header className="conv-cabecera">
+              <div>
+                <h2>{d.cliente}</h2>
+                <p className="nota">
+                  {NOMBRE_CANAL[d.canal] ?? d.canal} · conversación #{d.id} · {d.total_mensajes} mensajes
+                </p>
+              </div>
+              <Estado valor={d.estado} />
+              <div className="conv-cabecera-acciones">
+                {d.estado === 'escalada' && (
+                  <button
+                    type="button"
+                    className="boton"
+                    disabled={ocupado}
+                    onClick={() => ejecutar('reactivar', null, 'El agente volvió a atender esta conversación.')}
+                  >
+                    Reactivar agente
+                  </button>
                 )}
-
-                <section className="ficha" aria-label="Ficha de contexto">
-                  <div className="ficha-cabecera">
-                    <h4>Ficha de contexto</h4>
-                    {sinOrden.length > 1 && (
-                      <button
-                        type="button"
-                        className="boton primario"
-                        onClick={() =>
-                          onCrearOrden({
-                            clienteId: String(d.orden_sugerida.cliente_id),
-                            descripciones: sinOrden.map((i) => i.descripcion_de_orden),
-                            intereses: sinOrden.map((i) => i.numero),
-                          })
-                        }
-                      >
-                        Crear un pedido con las {sinOrden.length} joyas
-                        {sinOrden.length < d.intereses.length ? ' sin orden' : ''}
-                      </button>
-                    )}
-                  </div>
-                  <Datos items={d.datos_del_cliente} />
-                  {d.intereses.length === 0 && (
-                    <p className="nota">El agente todavía no anotó ninguna joya.</p>
-                  )}
-                  {d.intereses.map((i) => (
-                    <div key={i.numero} className={`interes ${i.activo ? 'activo' : ''}`}>
-                      <p className="interes-titulo">
-                        <strong>
-                          {d.intereses.length > 1 ? `${i.numero}. ` : ''}
-                          {i.titulo}
-                        </strong>
-                        {i.activo && d.intereses.length > 1 && (
-                          <span className="insignia estado-activa">De esta se está hablando</span>
-                        )}
-                        {i.orden ? (
-                          <span className="insignia recibida">
-                            Orden {i.orden} · {NOMBRE_ETAPA[i.etapa_de_la_orden] ?? i.etapa_de_la_orden}
-                          </span>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() =>
-                              onCrearOrden({
-                                clienteId: String(d.orden_sugerida.cliente_id),
-                                descripciones: [i.descripcion_de_orden],
-                                intereses: [i.numero],
-                              })
-                            }
-                          >
-                            Crear orden de esta joya
-                          </button>
-                        )}
-                      </p>
-                      <Datos items={i.datos} />
-                    </div>
-                  ))}
-                </section>
-
-                <div className="conv-mensajes" ref={caja}>
-                  {d.historial.map((m) => (
-                    <p key={m.id} className={`burbuja ${m.autor}`} title={hora(m.creado_en)}>
-                      <small className="burbuja-autor">
-                        {AUTOR[m.autor]}
-                        {m.origen && ORIGEN[m.origen] ? ` · ${ORIGEN[m.origen]}` : ''}
-                        {m.usuario ? ` · ${m.usuario}` : ''}
-                      </small>
-                      {m.contenido}
-                    </p>
-                  ))}
-                </div>
-
                 {d.estado !== 'cerrada' && (
-                  <form className="conv-responder" onSubmit={responder}>
-                    <textarea
-                      rows={2}
-                      value={texto}
-                      maxLength={1000}
-                      onChange={(e) => setTexto(e.target.value)}
-                      placeholder="Escribe al cliente por su mismo canal…"
-                    />
-                    <button type="submit" className="boton primario" disabled={ocupado || !texto.trim()}>
-                      Enviar al cliente
-                    </button>
-                  </form>
+                  <button
+                    type="button"
+                    className="boton"
+                    disabled={ocupado}
+                    onClick={() => ejecutar('cerrar', null, 'Conversación cerrada.')}
+                  >
+                    Cerrar
+                  </button>
                 )}
+              </div>
+            </header>
 
-                {aviso && <p className={`estado ${aviso.tipo === 'error' ? 'error' : 'ok'}`}>{aviso.texto}</p>}
+            {d.motivo_escalamiento && (
+              <p className="conv-motivo">Motivo de la derivación: {d.motivo_escalamiento}</p>
+            )}
 
-                <div className="conv-acciones">
-                  {d.intereses.length === 0 && (
-                    <button
-                      type="button"
-                      className="boton"
-                      onClick={() =>
-                        onCrearOrden({
-                          clienteId: String(d.orden_sugerida.cliente_id),
-                          descripciones: [d.orden_sugerida.descripcion],
-                        })
-                      }
-                    >
-                      Crear orden para este cliente
-                    </button>
-                  )}
-                  {d.estado === 'escalada' && (
-                    <button
-                      type="button"
-                      className="boton"
-                      disabled={ocupado}
-                      onClick={() => ejecutar('reactivar', null, 'El agente volvió a atender esta conversación.')}
-                    >
-                      Reactivar agente
-                    </button>
-                  )}
-                  {d.estado !== 'cerrada' && (
-                    <button
-                      type="button"
-                      className="boton"
-                      disabled={ocupado}
-                      onClick={() => ejecutar('cerrar', null, 'Conversación cerrada.')}
-                    >
-                      Cerrar conversación
-                    </button>
-                  )}
+            <div className="conv-mensajes" ref={caja}>
+              {d.historial.map((m) => (
+                <div key={m.id} className={`conv-mensaje ${m.autor}`}>
+                  <p className={`burbuja ${m.autor}`}>
+                    <small className="burbuja-autor">
+                      {AUTOR[m.autor]}
+                      {m.origen && ORIGEN[m.origen] ? ` · ${ORIGEN[m.origen]}` : ''}
+                      {m.usuario ? ` · ${m.usuario}` : ''}
+                    </small>
+                    {m.contenido}
+                    <small className="burbuja-hora">{hora(m.creado_en)}</small>
+                  </p>
                 </div>
+              ))}
+            </div>
+
+            {aviso && (
+              <p className={`estado ${aviso.tipo === 'error' ? 'error' : 'ok'}`} role="status">
+                {aviso.texto}
+              </p>
+            )}
+
+            {d.estado !== 'cerrada' ? (
+              <form className="conv-responder" onSubmit={responder}>
+                <label className="solo-lectores" htmlFor="respuesta-asesor">
+                  Mensaje al cliente
+                </label>
+                <textarea
+                  id="respuesta-asesor"
+                  rows={2}
+                  value={texto}
+                  maxLength={1000}
+                  onChange={(e) => setTexto(e.target.value)}
+                  placeholder={`Escribe a ${d.cliente} por ${NOMBRE_CANAL[d.canal] ?? 'su canal'}…`}
+                />
+                <button type="submit" className="boton primario" disabled={ocupado || !texto.trim()}>
+                  Enviar
+                </button>
+              </form>
+            ) : (
+              <p className="nota conv-cerrada">
+                Conversación cerrada. Si el cliente vuelve a escribir, se abre una nueva.
+              </p>
+            )}
+          </section>
+
+          <aside className="conv-ficha" aria-label="Ficha de contexto">
+            <h3>Ficha de contexto</h3>
+            <Datos items={d.datos_del_cliente} />
+            {d.ordenes_activas > 0 && <p className="nota">{d.ordenes_activas} orden(es) activa(s)</p>}
+
+            <h4>Joyas que le interesan</h4>
+            {d.intereses.length === 0 && (
+              <>
+                <p className="nota">El agente todavía no anotó ninguna joya.</p>
+                <button type="button" className="boton" onClick={() => crearOrden(null)}>
+                  Crear orden para este cliente
+                </button>
               </>
             )}
-          </article>
-        </div>
+            {d.intereses.map((i) => (
+              <div key={i.numero} className={`interes ${i.activo ? 'activo' : ''}`}>
+                <p className="interes-titulo">
+                  <strong>
+                    {d.intereses.length > 1 ? `${i.numero} · ` : ''}
+                    {i.titulo}
+                  </strong>
+                  {i.activo && d.intereses.length > 1 && <span className="etiqueta neutro">De esta se habla</span>}
+                </p>
+                <Datos items={i.datos} />
+                {i.orden ? (
+                  <span className="etiqueta aviso interes-orden">
+                    Orden {i.orden} · {NOMBRE_ETAPA[i.etapa_de_la_orden] ?? i.etapa_de_la_orden}
+                  </span>
+                ) : (
+                  <button type="button" className="interes-crear" onClick={() => crearOrden([i])}>
+                    Crear orden de esta joya
+                  </button>
+                )}
+              </div>
+            ))}
+            {sinOrden.length > 1 && (
+              <button type="button" className="boton primario" onClick={() => crearOrden(sinOrden)}>
+                Crear un pedido con las {sinOrden.length} joyas
+                {sinOrden.length < d.intereses.length ? ' sin orden' : ''}
+              </button>
+            )}
+          </aside>
+        </>
       )}
-    </section>
+    </div>
   )
 }

@@ -21,7 +21,7 @@ from app.meta_envio import Enviador, ErrorMeta
 from app.models import (
     Cliente, Conversacion, Mensaje, Orden, TransicionConversacion, Usuario,
 )
-from app.ordenes import codigo_de_orden, nombre_de
+from app.ordenes import NOMBRE_DEL_CANAL, codigo_de_orden, nombre_de
 from app.webhook import get_enviador
 
 # Las conversaciones y la ficha del cliente son solo para el asesor (y el rol admin).
@@ -157,7 +157,7 @@ def _datos_del_cliente(cliente: Cliente, c: Conversacion) -> list[ItemFicha]:
     if nombre:
         sufijo = "" if cliente.nombre_preferido else " (de su perfil, sin confirmar)"
         datos.append(ItemFicha(etiqueta="Nombre preferido", valor=nombre + sufijo))
-    datos.append(ItemFicha(etiqueta="Canal", valor=c.canal))
+    datos.append(ItemFicha(etiqueta="Canal", valor=NOMBRE_DEL_CANAL.get(c.canal, c.canal)))
     if contexto.get("intencion"):
         datos.append(ItemFicha(etiqueta="Intención detectada", valor=str(contexto["intencion"])))
     return datos
