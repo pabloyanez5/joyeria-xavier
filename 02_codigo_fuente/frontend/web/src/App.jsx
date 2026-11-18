@@ -27,10 +27,9 @@ function construirConsulta({ categoria, material, q, precioMax }) {
   return texto ? `?${texto}` : ''
 }
 
-function ContactoAsesor({ titulo, mensaje }) {
+// Canales de contacto de la joyería (WhatsApp, Messenger, Instagram) con el mensaje ya escrito.
+function useCanales(mensaje) {
   const [canales, setCanales] = useState([])
-  const [canal, setCanal] = useState('whatsapp')
-
   useEffect(() => {
     const control = new AbortController()
     fetch(`/api/contacto?mensaje=${encodeURIComponent(mensaje)}`, {
@@ -41,6 +40,14 @@ function ContactoAsesor({ titulo, mensaje }) {
       .catch(() => {})
     return () => control.abort()
   }, [mensaje])
+  return canales
+}
+
+const MENSAJE_GENERAL = 'Hola, quisiera más información sobre sus joyas.'
+
+function ContactoAsesor({ titulo, mensaje }) {
+  const canales = useCanales(mensaje)
+  const [canal, setCanal] = useState('whatsapp')
 
   const elegido = canales.find((c) => c.canal === canal) ?? canales[0]
 
@@ -184,6 +191,7 @@ function Configurador({ productoId, onCerrar }) {
                 alt={detalle.producto.nombre}
               />
             )}
+            <div className="modal-info">
             <span className="categoria">{detalle.producto.categoria}</span>
             <h2>{detalle.producto.nombre}</h2>
             <p className="descripcion">{detalle.producto.descripcion}</p>
@@ -254,10 +262,11 @@ function Configurador({ productoId, onCerrar }) {
                 )}
               </div>
             )}
+            </div>
           </>
         )}
-        <button type="button" className="boton" onClick={onCerrar}>
-          Cerrar
+        <button type="button" className="boton-icono modal-cerrar" onClick={onCerrar} aria-label="Cerrar">
+          ×
         </button>
       </div>
     </div>
@@ -267,34 +276,36 @@ function Configurador({ productoId, onCerrar }) {
 function Tarjeta({ producto, onConfigurar }) {
   return (
     <li className="tarjeta">
-      {producto.imagen_url && (
-        <img
-          className="foto"
-          src={producto.imagen_url}
-          alt={producto.nombre}
-          loading="lazy"
-        />
-      )}
-      <span className="categoria">{producto.categoria}</span>
-      <h2>{producto.nombre}</h2>
-      <p className="descripcion">{producto.descripcion}</p>
-      <ul className="opciones">
-        {producto.precios.map((p) => (
-          <li key={`${p.material}-${p.quilataje}`}>
-            {p.material} {p.quilataje ?? ''} · {dinero(p.precio)}
-          </li>
-        ))}
-      </ul>
-      {producto.precio_desde && (
-        <span className="desde">Desde {dinero(producto.precio_desde)}</span>
-      )}
-      <button
-        type="button"
-        className="boton primario"
-        onClick={() => onConfigurar(producto.id)}
-      >
-        Configurar y cotizar
+      <button type="button" className="tarjeta-foto" onClick={() => onConfigurar(producto.id)}>
+        {producto.imagen_url ? (
+          <img className="foto" src={producto.imagen_url} alt="" loading="lazy" />
+        ) : (
+          <span className="foto foto-vacia" aria-hidden="true" />
+        )}
+        <span className="solo-lectores">Ver {producto.nombre}</span>
       </button>
+      <div className="tarjeta-cuerpo">
+        <span className="categoria">{producto.categoria}</span>
+        <h3>{producto.nombre}</h3>
+        <p className="descripcion">{producto.descripcion}</p>
+        <ul className="opciones" aria-label="Materiales disponibles">
+          {producto.precios.map((p) => (
+            <li key={`${p.material}-${p.quilataje}`}>
+              {p.material} {p.quilataje ?? ''} · {dinero(p.precio)}
+            </li>
+          ))}
+        </ul>
+        <div className="tarjeta-pie">
+          {producto.precio_desde && (
+            <span className="desde">
+              <small>Desde</small> {dinero(producto.precio_desde)}
+            </span>
+          )}
+          <button type="button" className="boton primario" onClick={() => onConfigurar(producto.id)}>
+            Cotizar
+          </button>
+        </div>
+      </div>
     </li>
   )
 }
@@ -352,75 +363,142 @@ function App() {
 
   const sinResultados =
     !resultado.error && !cargando && resultado.productos.length === 0
+  const filtrando = Boolean(filtros.q || filtros.categoria || filtros.material || filtros.precioMax)
 
   return (
-    <main className="pagina">
-      <header className="encabezado">
-        <h1>Joyería Xavier</h1>
-        <p>Catálogo de joyas</p>
+    <div className="sitio">
+      <header className="sitio-cabecera">
+        <a href="/" className="sitio-logo">
+          <img src="/marca/logo-durazno.png" alt="Joyería Xavier, inspirado en ti" />
+        </a>
+        <nav aria-label="Secciones del sitio">
+          <a href="#catalogo">Catálogo</a>
+          <a href="#como-cotizamos">Cómo cotizamos</a>
+          <a href="#contacto">Contacto</a>
+        </nav>
+        <BotonWhatsApp />
       </header>
 
-      <section className="filtros" aria-label="Filtros">
-        <label>
-          Buscar
-          <input
-            type="search"
-            value={filtros.q}
-            onChange={cambiar('q')}
-            placeholder="Nombre de la joya"
-          />
-        </label>
-        <label>
-          Categoría
-          <select value={filtros.categoria} onChange={cambiar('categoria')}>
-            <option value="">Todas</option>
-            {categorias.map((c) => (
-              <option key={c} value={c}>
-                {c}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Material
-          <select value={filtros.material} onChange={cambiar('material')}>
-            <option value="">Todos</option>
-            {MATERIALES.map((m) => (
-              <option key={m} value={m}>
-                {m}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Precio máximo (USD)
-          <input
-            type="number"
-            min="0"
-            value={filtros.precioMax}
-            onChange={cambiar('precioMax')}
-            placeholder="Ej. 500"
-          />
-        </label>
-        <button type="button" onClick={() => setFiltros(FILTROS_VACIOS)}>
-          Limpiar filtros
-        </button>
+      <section className="portada">
+        <div className="portada-texto">
+          <h1>Diseñando joyas con amor desde 1964</h1>
+          <p>
+            Joyas en oro y plata hechas en Quito. Elige un modelo y conoce su precio referencial al
+            instante; un asesor confirma el valor final.
+          </p>
+          <div className="portada-acciones">
+            <a className="boton oscuro" href="#catalogo">
+              Ver el catálogo
+            </a>
+            <a className="boton contorno" href="#contacto">
+              Hablar con un asesor
+            </a>
+          </div>
+        </div>
+        <img className="portada-logo" src="/marca/logo-blanco.png" alt="" />
       </section>
 
-      {resultado.error && <p className="estado error">{resultado.error}</p>}
-      {!resultado.error && cargando && <p className="estado">Cargando…</p>}
-      {sinResultados && (
-        <ContactoAsesor
-          titulo="No hay joyas con esos filtros. Un asesor puede ayudarte a encontrar lo que buscas."
-          mensaje={MENSAJE_SIN_RESULTADOS}
-        />
-      )}
+      <main id="catalogo" className="catalogo">
+        <div className="catalogo-cabeza">
+          <h2>Nuestras joyas</h2>
+          <div className="selector-material" role="group" aria-label="Material">
+            {['', ...MATERIALES].map((m) => (
+              <button
+                key={m || 'todos'}
+                type="button"
+                aria-pressed={filtros.material === m}
+                onClick={() => setFiltros((f) => ({ ...f, material: m }))}
+              >
+                {m ? m.charAt(0).toUpperCase() + m.slice(1) : 'Todos'}
+              </button>
+            ))}
+          </div>
+        </div>
 
-      <ul className="rejilla">
-        {resultado.productos.map((p) => (
-          <Tarjeta key={p.id} producto={p} onConfigurar={setConfigurando} />
-        ))}
-      </ul>
+        <div className="chips" role="group" aria-label="Categoría">
+          {['', ...categorias].map((c) => (
+            <button
+              key={c || 'todas'}
+              type="button"
+              aria-pressed={filtros.categoria === c}
+              onClick={() => setFiltros((f) => ({ ...f, categoria: c }))}
+            >
+              {c || 'Todas'}
+            </button>
+          ))}
+        </div>
+
+        <section className="filtros" aria-label="Buscar y filtrar">
+          <label>
+            Buscar
+            <input type="search" value={filtros.q} onChange={cambiar('q')} placeholder="Nombre de la joya" />
+          </label>
+          <label>
+            Precio máximo (USD)
+            <input
+              type="number"
+              min="0"
+              value={filtros.precioMax}
+              onChange={cambiar('precioMax')}
+              placeholder="Ej. 500"
+            />
+          </label>
+          <button type="button" className="boton" disabled={!filtrando} onClick={() => setFiltros(FILTROS_VACIOS)}>
+            Limpiar filtros
+          </button>
+        </section>
+
+        {resultado.error && <p className="estado error">{resultado.error}</p>}
+        {!resultado.error && cargando && <p className="estado">Cargando…</p>}
+        {!resultado.error && !cargando && resultado.productos.length > 0 && (
+          <p className="nota catalogo-cuenta">
+            {resultado.productos.length} {resultado.productos.length === 1 ? 'joya' : 'joyas'}
+          </p>
+        )}
+        {sinResultados && (
+          <ContactoAsesor
+            titulo="No hay joyas con esos filtros. Un asesor puede ayudarte a encontrar lo que buscas."
+            mensaje={MENSAJE_SIN_RESULTADOS}
+          />
+        )}
+
+        <ul className="rejilla">
+          {resultado.productos.map((p) => (
+            <Tarjeta key={p.id} producto={p} onConfigurar={setConfigurando} />
+          ))}
+        </ul>
+      </main>
+
+      <section id="como-cotizamos" className="como">
+        <h2>Cómo cotizamos</h2>
+        <ol>
+          <li>
+            <strong>Elige tu joya</strong>
+            <span>Filtra por categoría y material y abre el modelo que te guste.</span>
+          </li>
+          <li>
+            <strong>Mira el precio al instante</strong>
+            <span>Se calcula con el peso de la pieza por el precio del gramo del material, más la mano de obra.</span>
+          </li>
+          <li>
+            <strong>Un asesor lo confirma</strong>
+            <span>Te escribe por tu canal preferido, confirma el valor final y registra tu orden.</span>
+          </li>
+        </ol>
+      </section>
+
+      <section id="contacto" className="sitio-contacto">
+        <div>
+          <h2>¿Buscas algo distinto?</h2>
+          <p>Diseños a medida, otro material o quilataje: cuéntanos y un asesor te ayuda.</p>
+        </div>
+        <ContactoAsesor titulo="Elige por dónde prefieres que te atendamos." mensaje={MENSAJE_GENERAL} />
+      </section>
+
+      <footer className="sitio-pie">
+        <img src="/marca/logo-durazno.png" alt="" />
+        <span>Joyería Xavier · Quito, Ecuador · Precios referenciales en USD</span>
+      </footer>
 
       <Chat />
 
@@ -431,7 +509,18 @@ function App() {
           onCerrar={() => setConfigurando(null)}
         />
       )}
-    </main>
+    </div>
+  )
+}
+
+function BotonWhatsApp() {
+  const canales = useCanales(MENSAJE_GENERAL)
+  const whatsapp = canales.find((c) => c.canal === 'whatsapp') ?? canales[0]
+  if (!whatsapp) return null
+  return (
+    <a className="boton primario sitio-escribenos" href={whatsapp.enlace} target="_blank" rel="noreferrer">
+      Escríbenos por {whatsapp.nombre}
+    </a>
   )
 }
 
