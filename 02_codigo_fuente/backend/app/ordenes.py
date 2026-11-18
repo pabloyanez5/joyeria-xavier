@@ -18,7 +18,7 @@ from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field, field_validator, model_validator
-from sqlalchemy import func, or_, select
+from sqlalchemy import case, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.acceso import requiere
@@ -492,6 +492,13 @@ def listar_ordenes(
     session: Session = Depends(get_session),
 ):
     """Órdenes más recientes primero, con filtros que se combinan (JOY-83)."""
+    consulta = _consulta_filtrada(etapa, q, desde, hasta)
+    ordenes = session.scalars(consulta.order_by(Orden.id.desc()).limit(limite)).all()
+    return [armar_salida(session, o) for o in ordenes]
+
+
+def _consulta_filtrada(etapa, q, desde, hasta):
+    """Los filtros de JOY-83, compartidos por el tablero y la lista paginada."""
     if etapa is not None and etapa not in ETAPAS_CON_CANCELADA:
         raise HTTPException(
             422, f"La etapa debe ser una de: {', '.join(ETAPAS_CON_CANCELADA)}"
@@ -508,8 +515,84 @@ def listar_ordenes(
     if hasta:
         fin = datetime.combine(hasta + timedelta(days=1), time.min, timezone.utc)
         consulta = consulta.where(Orden.creado_en < fin)
-    ordenes = session.scalars(consulta.order_by(Orden.id.desc()).limit(limite)).all()
-    return [armar_salida(session, o) for o in ordenes]
+    return consulta
+
+
+# --- lista paginada (JOY-90) ---
+
+POR_PAGINA = (25, 50, 100)
+
+# Cómo se ordena la lista; el código desempata para que la paginación sea estable.
+_NOMBRE_DEL_CLIENTE = (
+    # El mismo nombre que se muestra (nombre_de): preferido, completo o el del perfil.
+    select(func.coalesce(Cliente.nombre_preferido, Cliente.nombre_completo, Cliente.nombre_perfil))
+    .where(Cliente.id == Orden.cliente_id)
+    .correlate(Orden)
+    .scalar_subquery()
+)
+_POSICION_DE_LA_ETAPA = case(
+    {etapa: n for n, etapa in enumerate(ETAPAS_CON_CANCELADA)}, value=Orden.etapa_actual, else_=99
+)
+ORDENES_POSIBLES = {
+    "creacion": Orden.creado_en,
+    "entrega": Orden.fecha_entrega_cliente,
+    "etapa": _POSICION_DE_LA_ETAPA,
+    "cliente": func.lower(_NOMBRE_DEL_CLIENTE),
+    "codigo": Orden.id,
+}
+
+
+class PaginaDeOrdenes(BaseModel):
+    total: int  # órdenes que cumplen los filtros (no solo las de esta página)
+    pagina: int
+    por_pagina: int
+    paginas: int
+    orden: str
+    direccion: str
+    ordenes: list[OrdenOut]
+
+
+@router.get("/pagina", response_model=PaginaDeOrdenes, dependencies=[Depends(puede_ver)])
+def listar_por_paginas(
+    etapa: str | None = Query(None, description=", ".join(ETAPAS_CON_CANCELADA)),
+    q: str | None = Query(None, max_length=100, description="Código, cliente o detalle"),
+    desde: date | None = Query(None, description="Creadas desde esta fecha (AAAA-MM-DD)"),
+    hasta: date | None = Query(None, description="Creadas hasta esta fecha, inclusive"),
+    pagina: int = Query(1, ge=1, le=100_000),
+    por_pagina: int = Query(25, description="25, 50 o 100"),
+    orden: str = Query("creacion", description=", ".join(ORDENES_POSIBLES)),
+    direccion: str = Query("desc", description="asc o desc"),
+    session: Session = Depends(get_session),
+):
+    """Lista de órdenes por páginas, para cuando hay cientos o miles (JOY-90).
+
+    Trae solo las órdenes de la página pedida y el total que cumple los filtros, así el panel
+    no se vuelve lento con el volumen de la joyería."""
+    if por_pagina not in POR_PAGINA:
+        raise HTTPException(422, "Por página debe ser 25, 50 o 100")
+    if orden not in ORDENES_POSIBLES:
+        raise HTTPException(422, f"El orden debe ser uno de: {', '.join(ORDENES_POSIBLES)}")
+    if direccion not in ("asc", "desc"):
+        raise HTTPException(422, "La dirección debe ser asc o desc")
+    consulta = _consulta_filtrada(etapa, q, desde, hasta)
+    total = session.scalar(select(func.count()).select_from(consulta.subquery()))
+    columna = ORDENES_POSIBLES[orden]
+    criterio = columna.asc() if direccion == "asc" else columna.desc()
+    desempate = Orden.id.asc() if direccion == "asc" else Orden.id.desc()
+    filas = session.scalars(
+        consulta.order_by(criterio.nulls_last(), desempate)
+        .limit(por_pagina)
+        .offset((pagina - 1) * por_pagina)
+    ).all()
+    return PaginaDeOrdenes(
+        total=total,
+        pagina=pagina,
+        por_pagina=por_pagina,
+        paginas=max(1, -(-total // por_pagina)),
+        orden=orden,
+        direccion=direccion,
+        ordenes=[armar_salida(session, o) for o in filas],
+    )
 
 
 @router.get("/cola", response_model=list[OrdenOut], dependencies=[Depends(puede_ver)])
