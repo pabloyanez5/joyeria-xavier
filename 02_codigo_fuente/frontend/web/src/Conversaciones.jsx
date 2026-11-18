@@ -68,8 +68,39 @@ export default function Conversaciones({ onCrearOrden }) {
   const [ocupado, setOcupado] = useState(false)
   const [filtro, setFiltro] = useState(null) // null = todas
   const caja = useRef(null)
+  const formulario = useRef(null)
+  const soltarTeclado = useRef(null)
 
   const idActual = elegida ?? lista[0]?.id ?? null
+
+  // En el celular el teclado tapa la caja de respuesta: mientras se escribe, la página se
+  // desplaza para que la caja quede justo encima del teclado (visualViewport es lo visible).
+  function seguirAlTeclado() {
+    const visible = window.visualViewport
+    const ajustar = () => {
+      const respuesta = formulario.current
+      if (!respuesta) return
+      const r = respuesta.getBoundingClientRect()
+      const arriba = visible ? visible.offsetTop : 0
+      const abajo = visible ? visible.offsetTop + visible.height : window.innerHeight
+      if (r.bottom > abajo - 8) window.scrollBy(0, r.bottom - abajo + 8)
+      else if (r.top < arriba) window.scrollBy(0, r.top - arriba - 8)
+    }
+    soltarTeclado.current?.()
+    const espera = setTimeout(ajustar, 350)
+    visible?.addEventListener('resize', ajustar)
+    soltarTeclado.current = () => {
+      clearTimeout(espera)
+      visible?.removeEventListener('resize', ajustar)
+    }
+  }
+
+  function soltarAlTeclado() {
+    soltarTeclado.current?.()
+    soltarTeclado.current = null
+  }
+
+  useEffect(() => () => soltarTeclado.current?.(), [])
 
   useEffect(() => {
     let vigente = true
@@ -292,7 +323,7 @@ export default function Conversaciones({ onCrearOrden }) {
             )}
 
             {d.estado !== 'cerrada' ? (
-              <form className="conv-responder" onSubmit={responder}>
+              <form ref={formulario} className="conv-responder" onSubmit={responder}>
                 <label className="solo-lectores" htmlFor="respuesta-asesor">
                   Mensaje al cliente
                 </label>
@@ -302,6 +333,8 @@ export default function Conversaciones({ onCrearOrden }) {
                   value={texto}
                   maxLength={1000}
                   onChange={(e) => setTexto(e.target.value)}
+                  onFocus={seguirAlTeclado}
+                  onBlur={soltarAlTeclado}
                   placeholder={`Escribe a ${d.cliente} por ${NOMBRE_CANAL[d.canal] ?? 'su canal'}…`}
                 />
                 <button type="submit" className="boton primario" disabled={ocupado || !texto.trim()}>

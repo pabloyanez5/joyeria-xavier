@@ -2916,3 +2916,13 @@ button.enlace {
     gap: 8px;
   }
 }
+
+/* En el celular los campos van a 16 px como mínimo: con menos, el iPhone hace zoom al
+   escribir y la caja queda fuera de la vista. */
+@media (max-width: 860px) {
+  input,
+  select,
+  textarea {
+    font-size: max(16px, 1em);
+  }
+}

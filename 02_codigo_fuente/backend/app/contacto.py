@@ -14,16 +14,17 @@ class CanalOut(BaseModel):
 
 
 def armar_canales(mensaje: str) -> list[CanalOut]:
-    """WhatsApp siempre; Instagram y Messenger solo si están configurados."""
-    numero = os.getenv("JOYERIA_WHATSAPP", "").strip().lstrip("+")
-    base = f"https://wa.me/{numero}" if numero else "https://wa.me/"
-    canales = [
-        CanalOut(
-            canal="whatsapp",
-            nombre="WhatsApp",
-            enlace=f"{base}?text={quote(mensaje)}",
+    """Solo los canales configurados: un enlace sin número de WhatsApp no llega a nadie."""
+    canales = []
+    numero = os.getenv("JOYERIA_WHATSAPP", "").strip().lstrip("+").replace(" ", "")
+    if numero:
+        canales.append(
+            CanalOut(
+                canal="whatsapp",
+                nombre="WhatsApp",
+                enlace=f"https://wa.me/{numero}?text={quote(mensaje)}",
+            )
         )
-    ]
     instagram = os.getenv("JOYERIA_INSTAGRAM", "").strip()
     if instagram:
         canales.append(

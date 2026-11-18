@@ -24,6 +24,9 @@ VERSION_POR_DEFECTO = "v23.0"
 
 # Canales que se envían por la página de Facebook (Messenger e Instagram) y su largo máximo.
 CANALES_DE_PAGINA = {"messenger": 2000, "instagram": 1000}
+# Respuestas rápidas de Messenger e Instagram: hasta 13 y 20 caracteres cada una.
+MAX_RESPUESTAS_RAPIDAS = 13
+LARGO_RESPUESTA_RAPIDA = 20
 
 
 class ErrorMeta(Exception):
@@ -161,15 +164,50 @@ class EnviadorMeta(Enviador):
             if not (self.page_id and self.page_token):
                 logger.info("Falta META_PAGE_ID o META_PAGE_ACCESS_TOKEN para enviar por %s", canal)
                 return False
-            cuerpo = {
-                "recipient": {"id": destinatario},
-                "message": {"text": saliente.plano()[: CANALES_DE_PAGINA[canal]]},
-                "messaging_type": "RESPONSE",
-            }
             url = f"https://graph.facebook.com/{self.version}/{self.page_id}/messages"
-            return self._publicar(url, self.page_token, cuerpo)
+            aceptado = True
+            for mensaje in self._mensajes_de_pagina(canal, saliente):
+                cuerpo = {
+                    "recipient": {"id": destinatario},
+                    "message": mensaje,
+                    "messaging_type": "RESPONSE",
+                }
+                aceptado = self._publicar(url, self.page_token, cuerpo) and aceptado
+            return aceptado
         logger.info("El envío por %s todavía no está implementado", canal)
         return False
+
+    @staticmethod
+    def _mensajes_de_pagina(canal: str, s: Saliente) -> list[dict]:
+        """Messenger e Instagram: la foto va como imagen (no como enlace) y los botones o las
+        opciones de una lista como respuestas rápidas, que el cliente toca igual que en WhatsApp.
+        """
+        largo = CANALES_DE_PAGINA[canal]
+        mensajes = []
+        if s.tipo in ("imagen", "tarjeta") and s.imagen_url:
+            mensajes.append({"attachment": {"type": "image", "payload": {"url": s.imagen_url}}})
+        if s.tipo == "tarjeta":
+            opciones = [(b.id, b.titulo) for b in s.botones]
+            texto = s.texto
+        elif s.tipo == "botones":
+            opciones = [(b.id, b.titulo) for b in s.botones]
+            texto = s.texto
+        elif s.tipo == "lista":
+            # La lista se escribe completa (con su descripción) y cada opción queda para tocar.
+            opciones = [(f.id, f.titulo) for f in s.filas]
+            texto = s.plano()
+        else:
+            opciones = []
+            texto = s.texto if s.tipo == "imagen" and s.imagen_url else s.plano()
+        if texto.strip():
+            mensaje: dict = {"text": texto[:largo]}
+            if opciones:
+                mensaje["quick_replies"] = [
+                    {"content_type": "text", "title": cortar(titulo, LARGO_RESPUESTA_RAPIDA), "payload": id_}
+                    for id_, titulo in opciones[:MAX_RESPUESTAS_RAPIDAS]
+                ]
+            mensajes.append(mensaje)
+        return mensajes
 
     def nombre_de_perfil(self, canal: str, id_canal: str) -> str | None:
         """Messenger e Instagram no mandan el nombre en el webhook: se consulta a Meta.
