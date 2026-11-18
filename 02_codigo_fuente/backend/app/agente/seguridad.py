@@ -23,22 +23,31 @@ MARCAS_DE_INSTRUCCIONES = (
     "aviso interno",
 )
 
-# Se aplican sobre el texto en minúsculas y sin tildes.
-_PATRONES_DE_ATAQUE = [
-    re.compile(p)
-    for p in (
+# Se aplican sobre el texto en minúsculas y sin tildes. Cada regla tiene un nombre para el
+# registro de intentos bloqueados (JOY-74): se guarda qué regla saltó, no lo que escribió.
+_REGLAS_DE_ATAQUE = {
+    "cambiar_instrucciones": (
         r"\b(ignora|ignore|olvida|olvidate|omite|desobedece|salta|saltate)\b.{0,40}"
         r"\b(instrucciones|reglas|indicaciones|prompt|restricciones|lo anterior)\b",
         r"\b(ignore|disregard|forget)\b.{0,40}\b(instructions|rules|prompt|previous)\b",
+    ),
+    "pedir_prompt": (
         r"\b(system prompt|prompt del sistema|prompt inicial)\b",
         r"\binstrucciones (internas|ocultas|del sistema|iniciales|originales)\b",
         r"\b(muestra|muestrame|dime|revela|repite|imprime|escribe|cual es)\b.{0,30}"
         r"\b(tus|tu|las)\b.{0,15}\b(instrucciones|prompt|reglas internas)\b",
+    ),
+    "modo_sin_restricciones": (
         r"\b(modo (desarrollador|dios|administrador|admin|sin restricciones)|developer mode|"
         r"jailbreak|dan mode)\b",
         r"\bactua como\b.{0,40}\b(sin (restricciones|reglas|filtros)|administrador|desarrollador)\b",
-        r"\b(a partir de ahora|desde ahora)\b.{0,30}\b(eres|seras|ya no eres)\b",
-    )
+    ),
+    "cambiar_identidad": (r"\b(a partir de ahora|desde ahora)\b.{0,30}\b(eres|seras|ya no eres)\b",),
+}
+_PATRONES_DE_ATAQUE = [
+    (regla, re.compile(patron))
+    for regla, patrones in _REGLAS_DE_ATAQUE.items()
+    for patron in patrones
 ]
 
 _TELEFONO = re.compile(r"\+?\d[\d\s().-]{7,}\d")
@@ -55,10 +64,15 @@ def _digitos(texto: str) -> str:
     return re.sub(r"\D", "", texto)
 
 
+def regla_de_ataque(texto: str) -> str | None:
+    """Nombre de la regla si el mensaje trata de cambiar o sacar las instrucciones del agente."""
+    limpio = _normalizar(texto)
+    return next((regla for regla, patron in _PATRONES_DE_ATAQUE if patron.search(limpio)), None)
+
+
 def es_intento_de_ataque(texto: str) -> bool:
     """True si el mensaje trata de cambiar o sacar las instrucciones del agente."""
-    limpio = _normalizar(texto)
-    return any(p.search(limpio) for p in _PATRONES_DE_ATAQUE)
+    return regla_de_ataque(texto) is not None
 
 
 def proteger_salida(respuesta: str, texto_de_herramientas: str = "") -> str:

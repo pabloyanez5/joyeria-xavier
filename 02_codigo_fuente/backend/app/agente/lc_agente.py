@@ -98,6 +98,8 @@ class ResultadoAgente:
     herramientas: list[str] = field(default_factory=list)
     mensajes: list[Saliente] | None = None
     origen: str = "modelo"  # modelo | respaldo | guardrail
+    # Si el guardrail de salida corrigió la respuesta: qué encontró (para el registro, JOY-74).
+    regla_de_salida: str | None = None
 
 
 class _Estado:
@@ -540,13 +542,20 @@ def responder(
         respuesta = _a_texto(respaldo.invoke(mensajes).content).strip()
     if not respuesta:
         raise ValueError("El modelo no produjo una respuesta de texto")
-    respuesta = sanear_enlaces(respuesta, _enlaces_de(mensajes))
-    # Guardrail de salida (RNF-01 y RNF-09): sin instrucciones internas ni datos ajenos.
+    # Guardrail de salida (RNF-01 y RNF-09): sin instrucciones internas ni datos ajenos. Va antes
+    # de revisar los enlaces: si no, el dominio de un correo inventado se tomaba por un enlace.
     de_herramientas = "\n".join(str(m.content) for m in mensajes if isinstance(m, ToolMessage))
     protegida = seguridad.proteger_salida(respuesta, de_herramientas)
+    regla_de_salida = None
     if protegida != respuesta:
         logger.warning("Guardrail de salida: respuesta corregida (cliente %s)", cliente.id)
+        regla_de_salida = (
+            "instrucciones_en_respuesta"
+            if protegida == seguridad.RESPUESTA_SEGURA
+            else "dato_no_autorizado"
+        )
         respuesta = protegida
+    respuesta = sanear_enlaces(respuesta, _enlaces_de(mensajes))
     respuesta = seguridad.poner_nombre(respuesta, nombre_para_saludar(cliente))
     if pregunta_el_nombre:
         cliente.contexto_cualificacion = {
@@ -564,4 +573,5 @@ def responder(
         herramientas=estado.herramientas,
         mensajes=salientes,
         origen=estado.origen,
+        regla_de_salida=regla_de_salida,
     )

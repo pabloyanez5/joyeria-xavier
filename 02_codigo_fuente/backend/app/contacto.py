@@ -1,4 +1,5 @@
 import os
+import re
 from urllib.parse import quote
 
 from fastapi import APIRouter, Query
@@ -16,7 +17,8 @@ class CanalOut(BaseModel):
 def armar_canales(mensaje: str) -> list[CanalOut]:
     """Solo los canales configurados: un enlace sin número de WhatsApp no llega a nadie."""
     canales = []
-    numero = os.getenv("JOYERIA_WHATSAPP", "").strip().lstrip("+").replace(" ", "")
+    # wa.me solo acepta dígitos: con guiones o paréntesis WhatsApp lo toma como usuario.
+    numero = re.sub(r"\D", "", os.getenv("JOYERIA_WHATSAPP", ""))
     if numero:
         canales.append(
             CanalOut(

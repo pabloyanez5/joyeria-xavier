@@ -210,3 +210,24 @@ class HistorialEtapa(Base):
     creado_en: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
+
+class IntentoBloqueado(Base):
+    """Mensaje que la seguridad del agente no dejó pasar (JOY-74, RNF-01).
+
+    No copia el texto del cliente: apunta al mensaje guardado en su conversación, así el dato
+    personal queda en un solo lugar.
+    """
+
+    __tablename__ = "intentos_bloqueados"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    creado_en: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), index=True
+    )
+    cliente_id: Mapped[int | None] = mapped_column(ForeignKey("clientes.id"), index=True)
+    mensaje_id: Mapped[int | None] = mapped_column(ForeignKey("mensajes.id"))
+    canal: Mapped[str] = mapped_column(String(20))
+    # instrucciones | limite_de_mensajes | respuesta_corregida
+    motivo: Mapped[str] = mapped_column(String(30))
+    # Qué regla lo detectó (por ejemplo "pedir_prompt"); sin texto del cliente.
+    regla: Mapped[str | None] = mapped_column(String(40))

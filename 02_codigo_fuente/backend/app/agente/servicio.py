@@ -8,7 +8,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.agente import contexto as ctx
-from app.agente import estado_ordenes, intereses, menu
+from app.agente import estado_ordenes, intereses, menu, proteccion, seguridad
 from app.agente.intenciones import clasificar
 from app.agente.llm import ProveedorLLM
 from app.bitacora import sin_claves
@@ -174,6 +174,27 @@ def _recordar(cliente: Cliente, datos: ctx.Datos) -> None:
         )
 
 
+def _respuesta_fija(
+    session: Session,
+    conversacion: Conversacion,
+    cliente: Cliente,
+    creado: bool,
+    texto: str,
+    intencion: str,
+) -> RespuestaAgente:
+    """Respuesta de la seguridad del agente: se guarda como del agente con origen «guardrail»."""
+    session.add(
+        Mensaje(
+            conversacion_id=conversacion.id,
+            direccion="saliente",
+            contenido=texto,
+            origen="guardrail",
+        )
+    )
+    session.commit()
+    return RespuestaAgente(texto, intencion, conversacion.id, cliente.id, cliente_nuevo=creado)
+
+
 def atender_mensaje(
     session: Session,
     cache: CacheIdentidad,
@@ -216,6 +237,36 @@ def atender_mensaje(
             None, None, conversacion.id, cliente.id, escalada=True, cliente_nuevo=creado
         )
 
+    # Seguridad del agente II (JOY-74): antes de cualquier modelo.
+    session.flush()  # para conocer el id del mensaje y anotarlo si se bloquea
+    redis_cliente = getattr(cache, "redis", None)
+    if redis_cliente is not None:
+        revision = proteccion.LimiteDeMensajes(redis_cliente).revisar(canal, id_canal)
+        if not revision.permitido:
+            if not revision.avisar:
+                # Ya se le avisó en esta ventana: se guarda su mensaje y no se responde.
+                session.commit()
+                return RespuestaAgente(
+                    None, "limite_de_mensajes", conversacion.id, cliente.id, cliente_nuevo=creado
+                )
+            proteccion.registrar(
+                session, canal, "limite_de_mensajes", cliente.id, entrante.id
+            )
+            return _respuesta_fija(
+                session, conversacion, cliente, creado,
+                proteccion.AVISO_LIMITE, "limite_de_mensajes",
+            )
+    regla = None if accion else seguridad.regla_de_ataque(texto)
+    if regla:
+        # Guardrail de entrada (RNF-01): ni el modelo ni el clasificador ven el mensaje.
+        proteccion.registrar(
+            session, canal, "instrucciones", cliente.id, entrante.id, regla=regla
+        )
+        return _respuesta_fija(
+            session, conversacion, cliente, creado,
+            seguridad.RESPUESTA_SEGURA, "guardrail_entrada",
+        )
+
     detectadas: list[str] = []
     if accion:
         # El cliente tocó un botón o una opción de una lista: no hay texto que interpretar.
@@ -245,6 +296,15 @@ def atender_mensaje(
                     sin_claves(str(error))[:300],
                     exc_info=True,
                 )
+        if resultado_lc is not None and resultado_lc.regla_de_salida:
+            proteccion.registrar(
+                session,
+                canal,
+                "respuesta_corregida",
+                cliente.id,
+                entrante.id,
+                regla=resultado_lc.regla_de_salida,
+            )
         if resultado_lc is not None:
             intencion = resultado_lc.herramientas[0] if resultado_lc.herramientas else "conversacion"
             detectadas = list(resultado_lc.herramientas)
