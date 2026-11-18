@@ -1931,3 +1931,148 @@ button.peligro,
     margin-top: 12px;
   }
 }
+
+/* ---- JOY-90: vista de lista con paginación ---- */
+
+.selector-vista {
+  display: inline-flex;
+  padding: 3px;
+  border-radius: 10px;
+  background: var(--tenue);
+  border: 1px solid var(--linea);
+}
+
+.selector-vista button {
+  min-height: 36px;
+  padding: 0 14px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--suave);
+}
+
+.selector-vista button[aria-pressed='true'] {
+  background: var(--tarjeta);
+  color: var(--tinta);
+  font-weight: 600;
+  box-shadow: 0 1px 2px var(--sombra);
+}
+
+button.enlace {
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--oro-oscuro);
+  text-decoration: underline;
+  font-size: inherit;
+}
+
+.lista-ordenes {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.lista-tabla {
+  overflow-x: auto;
+  border: 1px solid var(--linea);
+  border-radius: 14px;
+  background: var(--tarjeta);
+}
+
+.lista-tabla table {
+  width: 100%;
+  min-width: 860px;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.lista-tabla th {
+  padding: 12px;
+  text-align: left;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--suave);
+  white-space: nowrap;
+}
+
+.lista-tabla th button {
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  color: var(--suave);
+}
+
+.lista-tabla th button.activo {
+  color: var(--tinta);
+  font-weight: 700;
+}
+
+.lista-tabla td {
+  padding: 10px 12px;
+  border-top: 1px solid var(--linea);
+  vertical-align: middle;
+}
+
+.lista-tabla td small {
+  display: block;
+  color: var(--suave);
+}
+
+.lista-tabla tr.seleccionada td {
+  background: var(--tenue);
+}
+
+.lista-tabla .numero {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.lista-joya {
+  max-width: 260px;
+}
+
+.lista-etapa {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  white-space: nowrap;
+}
+
+.lista-vacia {
+  padding: 24px;
+  text-align: center;
+  color: var(--suave);
+}
+
+.paginacion {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  font-size: 0.85rem;
+  color: var(--suave);
+}
+
+.paginacion label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.paginacion select {
+  min-height: 34px;
+  padding: 0 8px;
+}
+
+.paginacion-botones {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.paginacion-botones button {
+  min-height: 36px;
+}

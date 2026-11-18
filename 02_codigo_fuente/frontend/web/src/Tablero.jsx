@@ -35,6 +35,25 @@ const diaIso = (ms) => new Date(ms).toLocaleDateString('en-CA') // AAAA-MM-DD en
 
 const FILTROS_VACIOS = { q: '', etapa: '', desde: '', hasta: '' }
 
+// Vista de órdenes que eligió la persona (tablero o lista), recordada en este navegador.
+const CLAVE_VISTA = 'joyeria.vista_ordenes'
+function vistaGuardada() {
+  try {
+    return localStorage.getItem(CLAVE_VISTA) === 'lista' ? 'lista' : 'tablero'
+  } catch {
+    return 'tablero'
+  }
+}
+function guardarVista(vista) {
+  try {
+    localStorage.setItem(CLAVE_VISTA, vista)
+  } catch {
+    // sin almacenamiento: la elección vale solo para esta visita
+  }
+}
+
+const POR_PAGINA = [25, 50, 100]
+
 function consultaDe(filtros) {
   const params = new URLSearchParams()
   for (const [clave, valor] of Object.entries(filtros)) {
@@ -264,6 +283,121 @@ function DetalleOrden({ orden, puedeAvanzar, puedeVerificar, avisar, ocupada, ac
   )
 }
 
+function Encabezado({ campo, titulo, orden, onOrdenar }) {
+  const activo = orden.campo === campo
+  const sentido = activo ? (orden.direccion === 'asc' ? 'ascending' : 'descending') : 'none'
+  return (
+    <th scope="col" aria-sort={sentido}>
+      <button type="button" className={activo ? 'activo' : ''} onClick={() => onOrdenar(campo)}>
+        {titulo}
+        <span aria-hidden="true">{activo ? (orden.direccion === 'asc' ? ' ↑' : ' ↓') : ' ↕'}</span>
+      </button>
+    </th>
+  )
+}
+
+// Lista paginada (JOY-90): para cuando hay muchas órdenes. Solo trae la página que se ve.
+function ListaOrdenes({ datos, orden, onOrdenar, onPagina, onPorPagina, onAbrir, seleccion, puedeVerificar, hoy }) {
+  if (!datos) return <p className="estado">Cargando órdenes…</p>
+  const { total, pagina, paginas, por_pagina: porPagina, ordenes } = datos
+  const desde = total === 0 ? 0 : (pagina - 1) * porPagina + 1
+  const hasta = Math.min(total, pagina * porPagina)
+  const col = (campo, titulo) => (
+    <Encabezado campo={campo} titulo={titulo} orden={orden} onOrdenar={onOrdenar} />
+  )
+  return (
+    <div className="lista-ordenes">
+      <div className="lista-tabla">
+        <table>
+          <thead>
+            <tr>
+              {col('codigo', 'Orden')}
+              <th scope="col">Joya</th>
+              {col('cliente', 'Cliente')}
+              {col('etapa', 'Etapa')}
+              {col('entrega', 'Entrega')}
+              {puedeVerificar && <th scope="col" className="numero">Saldo</th>}
+              <th scope="col">Atención</th>
+              <th scope="col">
+                <span className="solo-lectores">Abrir</span>
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {ordenes.length === 0 && (
+              <tr>
+                <td colSpan={8} className="lista-vacia">
+                  Ninguna orden cumple los filtros.
+                </td>
+              </tr>
+            )}
+            {ordenes.map((o) => (
+              <tr key={o.id} className={seleccion === o.id ? 'seleccionada' : ''}>
+                <td>
+                  <strong>{o.codigo}</strong>
+                  {o.pedido && <small>{o.pedido}</small>}
+                </td>
+                <td className="lista-joya">{tituloJoya(o)}</td>
+                <td>{o.cliente ?? 'Cliente'}</td>
+                <td>
+                  <span className="lista-etapa">
+                    <span className={`punto ${o.etapa_actual}`} aria-hidden="true" />
+                    {nombreEtapa(o.etapa_actual)}
+                  </span>
+                </td>
+                <td>{fecha(o.fecha_entrega_cliente)}</td>
+                {puedeVerificar && (
+                  <td className="numero">
+                    {o.etapa_actual === 'cancelada' || o.saldo === null ? '—' : dinero(o.saldo)}
+                  </td>
+                )}
+                <td>
+                  <span className="tarjeta-etiquetas">
+                    {etiquetas(o, puedeVerificar, hoy).map((e) => (
+                      <Etiqueta key={e.texto} {...e} />
+                    ))}
+                  </span>
+                </td>
+                <td className="numero">
+                  <button type="button" onClick={() => onAbrir(o.id)} aria-label={`Abrir ${o.codigo}`}>
+                    Abrir
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <nav className="paginacion" aria-label="Paginación">
+        <span>
+          Mostrando {desde}–{hasta} de {total} órdenes
+        </span>
+        <label>
+          Por página
+          <select value={porPagina} onChange={(e) => onPorPagina(Number(e.target.value))}>
+            {POR_PAGINA.map((n) => (
+              <option key={n} value={n}>
+                {n}
+              </option>
+            ))}
+          </select>
+        </label>
+        <div className="paginacion-botones">
+          <button type="button" disabled={pagina <= 1} onClick={() => onPagina(pagina - 1)}>
+            Anterior
+          </button>
+          <span aria-current="page">
+            Página {pagina} de {paginas}
+          </span>
+          <button type="button" disabled={pagina >= paginas} onClick={() => onPagina(pagina + 1)}>
+            Siguiente
+          </button>
+        </div>
+      </nav>
+    </div>
+  )
+}
+
 // Tablero de producción (JOY-89): contador por etapa, tarjetas compactas y el detalle en un panel
 // lateral. El asesor registra el abono; el taller confirma el recibo y avanza cada etapa.
 export default function Tablero({
@@ -282,28 +416,65 @@ export default function Tablero({
   const [verFiltros, setVerFiltros] = useState(false)
   const [seleccion, setSeleccion] = useState(null)
   const [cargadoEn, setCargadoEn] = useState(0) // momento de la última carga: base de "hoy"
+  const [vista, setVista] = useState(vistaGuardada)
+  const [pagina, setPagina] = useState(1)
+  const [porPagina, setPorPagina] = useState(25)
+  const [orden, setOrden] = useState({ campo: 'creacion', direccion: 'desc' })
+  const [datosLista, setDatosLista] = useState(null)
   const consulta = consultaDe(filtros)
   const filtrando = consulta !== ''
   const filtrosActivos = ['etapa', 'desde', 'hasta'].filter((c) => filtros[c]).length
   const hayCanceladas = ordenes.some((o) => o.etapa_actual === 'cancelada')
   const visibles = COLUMNAS.filter((c) => !c.soloSiHay || hayCanceladas)
-  const elegida = ordenes.find((o) => o.id === seleccion) ?? null
+  const fuente = vista === 'lista' ? (datosLista?.ordenes ?? []) : ordenes
+  const elegida = fuente.find((o) => o.id === seleccion) ?? null
   const limite = cargadoEn - DIAS_CERRADAS * 24 * 3600 * 1000
   const hoy = cargadoEn ? diaIso(cargadoEn) : ''
 
   const cargar = useCallback(() => {
-    pedir(`/api/ordenes${consulta}`)
+    // El tablero trae las órdenes vigentes; la lista solo la página que se está viendo.
+    const paginaActual = new URLSearchParams(consulta)
+    paginaActual.set('pagina', pagina)
+    paginaActual.set('por_pagina', porPagina)
+    paginaActual.set('orden', orden.campo)
+    paginaActual.set('direccion', orden.direccion)
+    const ruta = vista === 'lista' ? `/api/ordenes/pagina?${paginaActual}` : `/api/ordenes${consulta}`
+    pedir(ruta)
       .then(leer)
-      .then((o) => {
-        setOrdenes(o)
+      .then((respuesta) => {
+        if (vista === 'lista') setDatosLista(respuesta)
+        else setOrdenes(respuesta)
         setCargadoEn(Date.now())
         setError(null)
       })
       .catch((e) => setError(e.message))
-  }, [consulta])
+  }, [consulta, vista, pagina, porPagina, orden])
 
   function filtrar(campo) {
-    return (e) => setFiltros((f) => ({ ...f, [campo]: e.target.value }))
+    return (e) => {
+      setFiltros((f) => ({ ...f, [campo]: e.target.value }))
+      setPagina(1)
+    }
+  }
+
+  function cambiarVista(nueva) {
+    guardarVista(nueva)
+    setVista(nueva)
+    setPagina(1)
+  }
+
+  function ordenarPor(campo) {
+    setOrden((o) =>
+      o.campo === campo
+        ? { campo, direccion: o.direccion === 'asc' ? 'desc' : 'asc' }
+        : { campo, direccion: campo === 'creacion' ? 'desc' : 'asc' },
+    )
+    setPagina(1)
+  }
+
+  function verEnLaLista(etapa) {
+    setFiltros((f) => ({ ...f, etapa }))
+    cambiarVista('lista')
   }
 
   useEffect(() => {
@@ -373,8 +544,15 @@ export default function Tablero({
   }
 
   return (
-    <section className="tablero-seccion" aria-label="Tablero de producción">
+    <section className="tablero-seccion" aria-label="Órdenes">
       <div className="tablero-barra">
+        <div className="selector-vista" role="group" aria-label="Vista">
+          {['tablero', 'lista'].map((v) => (
+            <button key={v} type="button" aria-pressed={vista === v} onClick={() => cambiarVista(v)}>
+              {v === 'tablero' ? 'Tablero' : 'Lista'}
+            </button>
+          ))}
+        </div>
         <label className="buscador">
           <Icono nombre="buscar" tamano={16} />
           <span className="solo-lectores">Buscar orden</span>
@@ -428,12 +606,19 @@ export default function Tablero({
             Hasta
             <input type="date" value={filtros.hasta} min={filtros.desde || undefined} onChange={filtrar('hasta')} />
           </label>
-          <button type="button" disabled={!filtrando} onClick={() => setFiltros(FILTROS_VACIOS)}>
+          <button
+            type="button"
+            disabled={!filtrando}
+            onClick={() => {
+              setFiltros(FILTROS_VACIOS)
+              setPagina(1)
+            }}
+          >
             Limpiar filtros
           </button>
         </form>
       )}
-      {filtrando && (
+      {filtrando && vista === 'tablero' && (
         <p className="nota">
           {ordenes.length === 0 ? 'Ninguna orden cumple los filtros.' : `${ordenes.length} orden(es) con estos filtros.`}
         </p>
@@ -446,6 +631,25 @@ export default function Tablero({
         </p>
       )}
 
+      {vista === 'lista' && (
+        <ListaOrdenes
+          datos={datosLista}
+          orden={orden}
+          onOrdenar={ordenarPor}
+          onPagina={setPagina}
+          onPorPagina={(n) => {
+            setPorPagina(n)
+            setPagina(1)
+          }}
+          onAbrir={setSeleccion}
+          seleccion={seleccion}
+          puedeVerificar={puedeVerificar}
+          hoy={hoy}
+        />
+      )}
+
+      {vista === 'tablero' && (
+        <>
       <ul className="contadores" aria-label="Órdenes por etapa">
         {visibles.map(({ etapa, titulo }) => (
           <li key={etapa}>
@@ -481,8 +685,13 @@ export default function Tablero({
                       </span>
                       <span className="tarjeta-joya">{tituloJoya(o)}</span>
                       <span className="tarjeta-cliente">
-                        {o.cliente ?? 'Cliente'} · <Icono nombre="calendario" tamano={13} />{' '}
-                        {fechaCorta(o.fecha_entrega_cliente)}
+                        {o.cliente ?? 'Cliente'}
+                        {o.fecha_entrega_cliente && (
+                          <>
+                            {' · '}
+                            <Icono nombre="calendario" tamano={13} /> {fechaCorta(o.fecha_entrega_cliente)}
+                          </>
+                        )}
                       </span>
                       <Progreso etapa={o.etapa_actual} />
                       <span className="tarjeta-etiquetas">
@@ -511,13 +720,18 @@ export default function Tablero({
               })}
               {ocultas.length > 0 && (
                 <p className="tablero-vacio">
-                  Últimos {DIAS_CERRADAS} días. {ocultas.length} más antigua(s): búscalas con los filtros.
+                  Últimos {DIAS_CERRADAS} días · {ocultas.length} más antigua(s).{' '}
+                  <button type="button" className="enlace" onClick={() => verEnLaLista(etapa)}>
+                    Ver todas en la lista
+                  </button>
                 </p>
               )}
             </section>
           )
         })}
       </div>
+        </>
+      )}
 
       {elegida && (
         <PanelLateral
