@@ -327,7 +327,7 @@ def test_la_ficha_muestra_cada_joya_por_separado_y_los_datos_del_cliente(api, se
 
     cliente = {i["etiqueta"]: i["valor"] for i in detalle["datos_del_cliente"]}
     assert cliente["Nombre preferido"] == "Ana (de su perfil, sin confirmar)"
-    assert cliente["Canal"] == "whatsapp"
+    assert cliente["Canal"] == "WhatsApp"
     assert cliente["Intención detectada"] == "Ver el catálogo o cotizar"
 
     aretes, cadena = detalle["intereses"]
