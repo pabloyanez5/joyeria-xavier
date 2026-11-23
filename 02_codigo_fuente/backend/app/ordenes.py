@@ -12,6 +12,7 @@ Flujo de una orden:
 - El asesor puede corregir los datos de una orden, devolverla una etapa o cancelarla, siempre
   con un motivo que queda en el historial con su nombre (JOY-23). Nada se borra.
 """
+import logging
 import re
 from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal
@@ -29,6 +30,8 @@ from app.models import (
     Cliente, Conversacion, HistorialEtapa, Mensaje, Orden, Pedido, Producto, Usuario,
 )
 from app.webhook import get_enviador
+
+logger = logging.getLogger("joyeria.ordenes")
 
 router = APIRouter(prefix="/ordenes", tags=["ordenes"])
 
@@ -673,15 +676,31 @@ NOMBRE_DEL_CANAL = {"whatsapp": "WhatsApp", "messenger": "Messenger", "instagram
 _FUERA_DE_VENTANA = ("131047", "2018278", "2534022", "outside of allowed window", "re-engagement")
 
 
+# Meta no reconoce al destinatario (el cliente borró o cambió su cuenta, o lo bloqueó).
+_DESTINATARIO_INVALIDO = ("recipient", "131030", "1545041", "2018001", "551")
+
+
 def motivo_legible(canal: str, error: str) -> str:
-    """El error de Meta, dicho para el asesor o el taller."""
+    """El error de Meta, dicho para el asesor o el taller (nunca el JSON crudo)."""
     nombre = NOMBRE_DEL_CANAL.get(canal, canal)
     if any(marca in error for marca in _FUERA_DE_VENTANA):
         return (
             f"El cliente no escribe hace más de 24 horas y {nombre} solo permite avisarle "
             "cuando vuelva a escribir. La orden quedó registrada igual."
         )
-    return error[:200]
+    if any(marca in error for marca in _DESTINATARIO_INVALIDO):
+        return (
+            f"{nombre} no reconoce la cuenta de este cliente (pudo borrarla, cambiarla o "
+            "bloquear a la joyería). La orden quedó registrada igual; avísale por otro medio."
+        )
+    if "Meta respondió 5" in error or "No se pudo contactar a Meta" in error:
+        return f"{nombre} no respondió en este momento. La orden quedó registrada igual."
+    codigo = re.search(r"Meta respondió (\d{3})", error)
+    return (
+        f"{nombre} no aceptó el aviso"
+        + (f" (error {codigo.group(1)})" if codigo else "")
+        + ". La orden quedó registrada igual; el detalle está en la bitácora del servidor."
+    )
 
 
 def _avisar_al_cliente(
@@ -695,6 +714,8 @@ def _avisar_al_cliente(
     try:
         enviado = enviador.enviar(cliente.canal, cliente.id_canal, texto)
     except ErrorMeta as e:
+        # El detalle técnico va a la bitácora; al panel, una frase entendible.
+        logger.warning("No se pudo avisar la orden %s por %s: %s", orden.id, cliente.canal, e)
         return "no_enviado", motivo_legible(cliente.canal, str(e))
     if not enviado:
         return "omitido", f"El envío por {cliente.canal} todavía no está disponible"
