@@ -38,16 +38,29 @@ def get_enviador() -> Enviador | None:
     return enviador_desde_entorno()
 
 
+def _secretos() -> list[str]:
+    """Claves con las que Meta firma los webhooks.
+
+    META_APP_SECRET es la clave de la app (WhatsApp, Messenger e Instagram con inicio de sesión
+    de Facebook). Si Instagram se conecta con su propio inicio de sesión, firma con la clave de
+    la app de Instagram: va en META_INSTAGRAM_APP_SECRET (opcional).
+    """
+    nombres = ("META_APP_SECRET", "META_INSTAGRAM_APP_SECRET")
+    return [s for s in (os.getenv(n, "").strip() for n in nombres) if s]
+
+
 async def verificar_firma(request: Request) -> None:
-    """Comprueba la firma X-Hub-Signature-256 de Meta si META_APP_SECRET está definido."""
-    secreto = os.getenv("META_APP_SECRET", "").strip()
-    if not secreto:
+    """Comprueba la firma X-Hub-Signature-256 de Meta si hay una clave configurada."""
+    secretos = _secretos()
+    if not secretos:
         return
     cuerpo = await request.body()
-    esperada = "sha256=" + hmac.new(secreto.encode(), cuerpo, hashlib.sha256).hexdigest()
     recibida = request.headers.get("X-Hub-Signature-256", "")
-    if not hmac.compare_digest(recibida, esperada):
-        raise HTTPException(status_code=403, detail="Firma inválida")
+    for secreto in secretos:
+        esperada = "sha256=" + hmac.new(secreto.encode(), cuerpo, hashlib.sha256).hexdigest()
+        if hmac.compare_digest(recibida, esperada):
+            return
+    raise HTTPException(status_code=403, detail="Firma inválida")
 
 
 def extraer_remitentes(payload: dict) -> list[tuple[str, str, str | None]]:

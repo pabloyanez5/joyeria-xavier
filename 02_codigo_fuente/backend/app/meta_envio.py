@@ -217,13 +217,19 @@ class EnviadorMeta(Enviador):
         """
         if canal not in CANALES_DE_PAGINA or not self.page_token:
             return None
-        url = f"https://graph.facebook.com/{self.version}/{urllib.parse.quote(id_canal)}?fields=name"
+        # Instagram: muchas cuentas no tienen nombre público; entonces se usa el usuario.
+        campos = "name,username" if canal == "instagram" else "name"
+        url = (
+            f"https://graph.facebook.com/{self.version}/{urllib.parse.quote(id_canal)}"
+            f"?fields={campos}"
+        )
         peticion = urllib.request.Request(
             url, headers={"Authorization": f"Bearer {self.page_token}"}, method="GET"
         )
         try:
             with urllib.request.urlopen(peticion, timeout=min(self.timeout, 3)) as respuesta:
-                nombre = json.loads(respuesta.read()).get("name")
+                datos = json.loads(respuesta.read())
+            nombre = datos.get("name") or datos.get("username")
         except Exception as e:
             logger.info("No se pudo consultar el nombre del perfil en %s: %s", canal, type(e).__name__)
             return None
