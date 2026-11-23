@@ -60,20 +60,29 @@ def tarifas_vigentes(session: Session) -> dict[tuple[str, str], TarifaMaterial]:
     return {_clave(t.material, t.quilataje): t for t in filas}
 
 
+def _positivo(valor) -> Decimal | None:
+    """El valor como Decimal si es mayor que cero; si falta o no es válido, None."""
+    if valor is None:
+        return None
+    numero = Decimal(valor)
+    return numero if numero > 0 else None
+
+
 def calcular_precio(
     producto: Producto, precio_tabla: Precio, tarifa: TarifaMaterial | None
-) -> PrecioCalculado:
+) -> PrecioCalculado | None:
     """Fórmula: peso (g) x precio por gramo del material + mano de obra de la pieza.
 
-    Si la pieza no tiene peso registrado o no hay tarifa vigente para el material,
-    se usa el precio fijo de la tabla `precios`.
+    Si la pieza no tiene un peso válido (mayor que cero), no hay tarifa vigente con precio
+    por gramo válido o la mano de obra es negativa, se usa el precio fijo de la tabla
+    `precios`. Si tampoco ese precio es válido, la combinación no se cotiza (None): la
+    atiende un asesor (JOY-75, RNF-07).
     """
-    if producto.peso_gramos is not None and tarifa is not None:
-        peso = Decimal(producto.peso_gramos)
-        costo_material = (peso * Decimal(tarifa.precio_gramo)).quantize(
-            CENTAVOS, rounding=ROUND_HALF_UP
-        )
-        mano_obra = Decimal(producto.mano_obra or 0).quantize(CENTAVOS)
+    peso = _positivo(producto.peso_gramos)
+    precio_gramo = _positivo(tarifa.precio_gramo) if tarifa is not None else None
+    mano_obra = Decimal(producto.mano_obra or 0).quantize(CENTAVOS, rounding=ROUND_HALF_UP)
+    if peso is not None and precio_gramo is not None and mano_obra >= 0:
+        costo_material = (peso * precio_gramo).quantize(CENTAVOS, rounding=ROUND_HALF_UP)
         return PrecioCalculado(
             producto_id=producto.id,
             material=precio_tabla.material,
@@ -81,15 +90,18 @@ def calcular_precio(
             precio=costo_material + mano_obra,
             metodo="formula",
             peso_gramos=peso,
-            precio_gramo=Decimal(tarifa.precio_gramo),
+            precio_gramo=precio_gramo,
             costo_material=costo_material,
             mano_obra=mano_obra,
         )
+    fijo = _positivo(precio_tabla.precio)
+    if fijo is None:
+        return None
     return PrecioCalculado(
         producto_id=producto.id,
         material=precio_tabla.material,
         quilataje=precio_tabla.quilataje,
-        precio=precio_tabla.precio,
+        precio=fijo.quantize(CENTAVOS, rounding=ROUND_HALF_UP),
         metodo="tabla",
     )
 
@@ -115,9 +127,9 @@ def precios_vigentes(
     resultado: dict[int, list[PrecioCalculado]] = {}
     for p in ultimos.values():
         tarifa = tarifas.get(_clave(p.material, p.quilataje))
-        resultado.setdefault(p.producto_id, []).append(
-            calcular_precio(por_id[p.producto_id], p, tarifa)
-        )
+        calculado = calcular_precio(por_id[p.producto_id], p, tarifa)
+        if calculado is not None:  # sin datos válidos no se ofrece un precio inventado
+            resultado.setdefault(p.producto_id, []).append(calculado)
     return resultado
 
 
