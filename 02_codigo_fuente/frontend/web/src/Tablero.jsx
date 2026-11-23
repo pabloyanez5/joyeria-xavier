@@ -155,7 +155,14 @@ const TEXTO_AVISO = {
 // Todo lo de una orden, en el panel lateral: datos, acción principal, historial y más acciones.
 function DetalleOrden({ orden, puedeAvanzar, puedeVerificar, avisar, ocupada, acciones }) {
   const [abono, setAbono] = useState('')
+  const [retira, setRetira] = useState('')
   const enProceso = orden.etapa_actual !== 'por_verificar' && orden.etapa_actual !== 'cancelada'
+  // JOY-18: en la cola, confirmar el recibo pasa la orden a producción.
+  const recibirDeLaCola = orden.acuse_pendiente && orden.etapa_actual === 'en_cola'
+  // JOY-19: la entrega física la registra el taller o el asesor, con quién retira.
+  const toca = orden.siguiente_etapa
+  const entregar = toca === 'entregada' && (puedeAvanzar || puedeVerificar)
+  const avanzarEtapa = puedeAvanzar && toca && toca !== 'entregada' && !recibirDeLaCola
 
   return (
     <div className="detalle">
@@ -221,6 +228,11 @@ function DetalleOrden({ orden, puedeAvanzar, puedeVerificar, avisar, ocupada, ac
             Recibida por {orden.acuse_por} · {hora(orden.acuse_en)}
           </small>
         )}
+        {orden.entregada_en && (
+          <small>
+            Entregada por {orden.entregada_por ?? '—'} · {hora(orden.entregada_en)}
+          </small>
+        )}
         {orden.ultimo_cambio && <small className="tarjeta-cambio">{orden.ultimo_cambio}</small>}
       </div>
 
@@ -254,20 +266,52 @@ function DetalleOrden({ orden, puedeAvanzar, puedeVerificar, avisar, ocupada, ac
         <p className="nota">Previsión: entra a la cola cuando el asesor registre el abono.</p>
       )}
 
-      {puedeAvanzar && enProceso && (orden.acuse_pendiente || orden.siguiente_etapa) && (
+      {puedeAvanzar && enProceso && (recibirDeLaCola || orden.acuse_pendiente || avanzarEtapa) && (
         <div className="detalle-accion">
-          {orden.acuse_pendiente && (
-            <button type="button" onClick={() => acciones.acuse(orden)}>
-              Confirmar recibo
+          {recibirDeLaCola && (
+            <button type="button" className="boton primario" disabled={ocupada} onClick={() => acciones.acuse(orden)}>
+              {ocupada ? 'Confirmando…' : 'Confirmar recibo y pasar a producción'}
             </button>
           )}
-          {orden.siguiente_etapa && (
+          {orden.acuse_pendiente && !recibirDeLaCola && (
+            <button type="button" disabled={ocupada} onClick={() => acciones.acuse(orden)}>
+              Confirmar que vi el cambio
+            </button>
+          )}
+          {avanzarEtapa && (
             <button type="button" className="boton primario" disabled={ocupada} onClick={() => acciones.avanzar(orden)}>
-              {ocupada ? 'Avanzando…' : `Pasar a ${nombreEtapa(orden.siguiente_etapa).toLowerCase()}`}
+              {ocupada ? 'Avanzando…' : `Pasar a ${nombreEtapa(toca).toLowerCase()}`}
             </button>
           )}
-          <small>{avisar ? `Se avisará al cliente por ${canalDe(orden)}.` : 'No se avisará al cliente.'}</small>
+          {(recibirDeLaCola || avanzarEtapa) && (
+            <small>{avisar ? `Se avisará al cliente por ${canalDe(orden)}.` : 'No se avisará al cliente.'}</small>
+          )}
         </div>
+      )}
+
+      {entregar && (
+        <form
+          className="detalle-accion"
+          onSubmit={(e) => {
+            e.preventDefault()
+            acciones.entregar(orden, retira)
+          }}
+        >
+          <label>
+            ¿Quién retira la joya? <span className="nota">(opcional, si no es el titular)</span>
+            <input
+              type="text"
+              maxLength={200}
+              value={retira}
+              onChange={(e) => setRetira(e.target.value)}
+              placeholder="Ej.: Carlos Pérez (esposo)"
+            />
+          </label>
+          <button type="submit" className="boton primario" disabled={ocupada}>
+            {ocupada ? 'Registrando…' : 'Registrar entrega al cliente'}
+          </button>
+          <small>Queda registrado quién la entregó y cuándo.</small>
+        </form>
       )}
 
       <section className="detalle-historial" aria-label="Historial">
@@ -525,8 +569,25 @@ export default function Tablero({
       }),
     acuse: (orden) =>
       ejecutar(orden, async () => {
-        const r = await pedir(`/api/ordenes/${orden.id}/acuse`, { method: 'POST' }).then(leer)
-        setAviso({ tipo: 'ok', texto: `${r.codigo}: recibo confirmado.` })
+        const r = await pedir(`/api/ordenes/${orden.id}/acuse`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ avisar_al_cliente: avisar }),
+        }).then(leer)
+        if (orden.etapa_actual === 'en_cola') {
+          avisoDe(r, `${r.codigo}: recibo confirmado, pasó a «${nombreEtapa(r.etapa_actual)}».`)
+        } else {
+          setAviso({ tipo: 'ok', texto: `${r.codigo}: cambio confirmado.` })
+        }
+      }),
+    entregar: (orden, retira) =>
+      ejecutar(orden, async () => {
+        const r = await pedir(`/api/ordenes/${orden.id}/etapa`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ etapa: 'entregada', avisar_al_cliente: avisar, nota: retira.trim() || null }),
+        }).then(leer)
+        avisoDe(r, `${r.codigo} entregada por ${r.entregada_por ?? 'ti'}.`)
       }),
     gestionada: (modo, r) => {
       if (modo === 'modificar') {
@@ -703,8 +764,13 @@ export default function Tablero({
                       </span>
                     </button>
                     {puedeAvanzar && enProceso && o.acuse_pendiente && (
-                      <button type="button" onClick={() => acciones.acuse(o)}>
-                        Confirmar recibo
+                      <button
+                        type="button"
+                        className={o.etapa_actual === 'en_cola' ? 'boton primario' : undefined}
+                        disabled={ocupada === o.id}
+                        onClick={() => acciones.acuse(o)}
+                      >
+                        {o.etapa_actual === 'en_cola' ? 'Recibir y pasar a producción' : 'Confirmar cambio'}
                       </button>
                     )}
                     {puedeAvanzar && enProceso && !o.acuse_pendiente && o.siguiente_etapa && (
