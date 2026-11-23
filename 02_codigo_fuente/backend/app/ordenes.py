@@ -47,6 +47,9 @@ MAX_JOYAS_POR_PEDIDO = 8
 puede_crear = requiere("asesor")
 puede_ver = requiere("asesor", "taller")
 puede_avanzar = requiere("taller")
+# La entrega física la registra quien atiende al cliente en la joyería: el taller o el asesor.
+puede_entregar = requiere("taller", "asesor")
+ETAPA_DE_ENTREGA = "entregada"
 
 # Aviso que recibe el cliente por su canal cuando la orden entra a cada etapa.
 AVISOS_AL_CLIENTE = {
@@ -233,6 +236,12 @@ class VerificacionIn(BaseModel):
 class CambioEtapaIn(BaseModel):
     etapa: str
     avisar_al_cliente: bool = True
+    # Al entregar: quién retira la joya, si no es el titular (queda en el historial).
+    nota: str | None = Field(None, max_length=200)
+
+
+class AcuseIn(BaseModel):
+    avisar_al_cliente: bool = True
 
 
 # --- datos de salida ---
@@ -261,6 +270,8 @@ class OrdenOut(BaseModel):
     acuse_pendiente: bool
     acuse_por: str | None = None  # usuario del taller que confirmó el recibo
     acuse_en: datetime | None = None
+    entregada_por: str | None = None  # quién registró la entrega física (JOY-19)
+    entregada_en: datetime | None = None
     publicada_en: datetime | None
     creado_en: datetime | None
     actualizado_en: datetime | None = None  # el tablero oculta lo cerrado hace más de 30 días
@@ -338,6 +349,8 @@ def armar_salida(session: Session, orden: Orden) -> OrdenOut:
         acuse_pendiente=orden.acuse_pendiente,
         acuse_por=_nombre_de_usuario(session, orden.acuse_usuario_id),
         acuse_en=orden.acuse_en,
+        entregada_por=_nombre_de_usuario(session, orden.entrega_usuario_id),
+        entregada_en=orden.entregada_en,
         publicada_en=orden.publicada_en,
         creado_en=orden.creado_en,
         actualizado_en=orden.actualizado_en,
@@ -748,24 +761,41 @@ def verificar_abono(
     )
 
 
-@router.post("/{orden_id}/acuse", response_model=OrdenOut)
+@router.post("/{orden_id}/acuse", response_model=CambioEtapaOut)
 def confirmar_acuse(
     orden_id: int,
+    datos: AcuseIn | None = None,
     session: Session = Depends(get_session),
+    enviador: Enviador | None = Depends(get_enviador),
     usuario: Usuario = Depends(puede_avanzar),
 ):
-    """El taller confirma que recibió la orden; queda registrado quién y cuándo."""
+    """El taller confirma que recibió la orden; queda registrado quién y cuándo (JOY-18).
+
+    Si la orden está en la cola, confirmar el recibo la pasa a producción, con su paso en el
+    historial y el aviso al cliente. Si ya estaba en producción (el asesor la modificó), solo
+    confirma que el taller vio el cambio.
+    """
+    datos = datos or AcuseIn()
     orden = session.get(Orden, orden_id)
     if orden is None:
         raise HTTPException(404, "La orden no existe")
     _no_cancelada(orden)
     if orden.etapa_actual == ETAPA_INICIAL:
         raise HTTPException(409, "La orden todavía espera la verificación del abono")
-    if orden.acuse_pendiente:
-        _registrar_acuse(orden, usuario)
+    if not orden.acuse_pendiente:
+        return _con_aviso(session, orden, enviador, False, "El recibo ya estaba confirmado")
+    _registrar_acuse(orden, usuario)
+    if orden.etapa_actual != ETAPA_DE_COLA:
         session.commit()
         session.refresh(orden)
-    return armar_salida(session, orden)
+        return _con_aviso(session, orden, enviador, False, "Solo se confirmó el cambio; la etapa no cambió")
+    orden.etapa_actual = siguiente_etapa(ETAPA_DE_COLA)
+    session.add(HistorialEtapa(orden_id=orden.id, etapa=orden.etapa_actual, usuario_id=usuario.id))
+    session.commit()
+    session.refresh(orden)
+    return _con_aviso(
+        session, orden, enviador, datos.avisar_al_cliente, "El taller decidió no avisar al cliente"
+    )
 
 
 @router.post("/{orden_id}/etapa", response_model=CambioEtapaOut)
@@ -774,12 +804,15 @@ def cambiar_etapa(
     datos: CambioEtapaIn,
     session: Session = Depends(get_session),
     enviador: Enviador | None = Depends(get_enviador),
-    usuario: Usuario = Depends(puede_avanzar),
+    usuario: Usuario = Depends(puede_entregar),
 ):
     """El taller avanza la orden a la etapa siguiente y el cliente recibe el aviso por su canal.
 
     Solo se avanza de una etapa a la siguiente para que el historial sea fiel al proceso.
-    Salir de la cola cuenta como acuse de recibo del taller."""
+    Salir de la cola cuenta como acuse de recibo del taller. La entrega física al cliente la
+    puede registrar también el asesor, con quién la entregó y cuándo (JOY-19)."""
+    if usuario.rol == "asesor" and datos.etapa != ETAPA_DE_ENTREGA:
+        raise HTTPException(403, "El asesor solo registra la entrega; las etapas las avanza el taller")
     orden = session.get(Orden, orden_id)
     if orden is None:
         raise HTTPException(404, "La orden no existe")
@@ -799,7 +832,14 @@ def cambiar_etapa(
     orden.etapa_actual = datos.etapa
     if orden.acuse_pendiente:
         _registrar_acuse(orden, usuario)
-    session.add(HistorialEtapa(orden_id=orden.id, etapa=datos.etapa, usuario_id=usuario.id))
+    nota = (datos.nota or "").strip() or None
+    if datos.etapa == ETAPA_DE_ENTREGA:
+        orden.entrega_usuario_id = usuario.id
+        orden.entregada_en = datetime.now(timezone.utc)
+        nota = f"Retiró: {nota}" if nota else None
+    session.add(
+        HistorialEtapa(orden_id=orden.id, etapa=datos.etapa, usuario_id=usuario.id, nota=nota)
+    )
     session.commit()
     session.refresh(orden)
     return _con_aviso(

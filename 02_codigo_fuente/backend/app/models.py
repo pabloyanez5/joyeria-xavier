@@ -188,6 +188,9 @@ class Orden(Base):
     # Acuse de recibo del taller: quién lo confirmó y cuándo.
     acuse_usuario_id: Mapped[int | None] = mapped_column(ForeignKey("usuarios.id"))
     acuse_en: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Entrega física al cliente (JOY-19): quién la registró y cuándo.
+    entrega_usuario_id: Mapped[int | None] = mapped_column(ForeignKey("usuarios.id"))
+    entregada_en: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     creado_en: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
