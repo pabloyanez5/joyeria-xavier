@@ -154,7 +154,8 @@ def test_si_meta_rechaza_el_aviso_la_orden_igual_avanza(api, session, datos):
     orden = nueva_orden(api, datos)
     r = avanzar(api, orden, "en_produccion")
     assert r.status_code == 200
-    assert r.json()["aviso_al_cliente"] == "no_enviado" and "24 horas" in r.json()["detalle_aviso"]
+    assert r.json()["aviso_al_cliente"] == "no_enviado"
+    assert "quedó registrada igual" in r.json()["detalle_aviso"]  # frase legible, sin JSON
     assert session.get(Orden, orden["id"]).etapa_actual == "en_produccion"
 
 
