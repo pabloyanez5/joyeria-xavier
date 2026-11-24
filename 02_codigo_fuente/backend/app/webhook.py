@@ -239,12 +239,14 @@ def recibir_mensaje(
                 nuevos += resultado.cliente_nuevo
                 if resultado.texto:
                     respuestas += 1
+                    # Sin el texto: lleva el nombre real del cliente y queda en la conversación
+                    # (RNF-09, JOY-77). La bitácora solo dice que se respondió y qué intención.
                     logger.info(
-                        "Respuesta del agente a %s %s (%s): %s",
+                        "Respuesta del agente a %s %s (%s, %d caracteres)",
                         m.canal,
                         _ocultar(m.id_canal),
                         resultado.intencion,
-                        resultado.texto,
+                        len(resultado.texto),
                     )
                     if enviador is not None:
                         enviadas += _enviar_respuesta(enviador, m, resultado)

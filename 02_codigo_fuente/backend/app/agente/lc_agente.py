@@ -421,7 +421,8 @@ def _historial(
     mensajes: list[BaseMessage] = []
     for m in reversed(filas):
         if m.direccion == "entrante":
-            mensajes.append(HumanMessage(m.contenido))
+            # Cédula, tarjetas, correos y teléfonos no viajan al modelo (RNF-09, JOY-77).
+            mensajes.append(HumanMessage(seguridad.ocultar_datos_personales(m.contenido)))
         else:  # lo que el agente dijo antes no lleva el nombre real: el modelo ve la marca
             mensajes.append(AIMessage(seguridad.enmascarar_nombre(m.contenido, nombre)))
     return mensajes
@@ -542,7 +543,7 @@ def responder(
     mensajes: list[BaseMessage] = [
         SystemMessage(sistema),
         *_historial(session, conversacion_id, id_mensaje_actual, nombre),
-        HumanMessage(texto),
+        HumanMessage(seguridad.ocultar_datos_personales(texto)),
     ]
 
     respuesta = ""
@@ -584,14 +585,10 @@ def responder(
     # Guardrail de salida (RNF-01 y RNF-09): sin instrucciones internas ni datos ajenos. Va antes
     # de revisar los enlaces: si no, el dominio de un correo inventado se tomaba por un enlace.
     de_herramientas = "\n".join(str(m.content) for m in mensajes if isinstance(m, ToolMessage))
-    protegida = seguridad.proteger_salida(respuesta, de_herramientas)
-    regla_de_salida = None
-    if protegida != respuesta:
-        logger.warning("Guardrail de salida: respuesta corregida (cliente %s)", cliente.id)
-        regla_de_salida = (
-            "instrucciones_en_respuesta"
-            if protegida == seguridad.RESPUESTA_SEGURA
-            else "dato_no_autorizado"
+    protegida, regla_de_salida = seguridad.regla_de_salida(respuesta, de_herramientas)
+    if regla_de_salida:
+        logger.warning(
+            "Guardrail de salida: respuesta corregida (%s, cliente %s)", regla_de_salida, cliente.id
         )
         respuesta = protegida
     respuesta = sanear_enlaces(respuesta, _enlaces_de(mensajes))

@@ -309,7 +309,7 @@ def atender_mensaje(
         )
         return _respuesta_fija(
             session, conversacion, cliente, creado,
-            seguridad.RESPUESTA_SEGURA, "guardrail_entrada",
+            seguridad.respuesta_para(regla), "guardrail_entrada",
         )
 
     detectadas: list[str] = []
