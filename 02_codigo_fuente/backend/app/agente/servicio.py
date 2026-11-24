@@ -56,6 +56,49 @@ def _describir(contexto: dict) -> str | None:
     return texto
 
 
+# Cómo se nombra cada ocasión dentro de una frase («es para un aniversario»).
+FRASE_DE_OCASION = {
+    "aniversario": "un aniversario",
+    "cumpleaños": "un cumpleaños",
+    "boda": "una boda",
+    "compromiso": "un compromiso",
+    "graduación": "una graduación",
+    "bautizo": "un bautizo",
+    "primera comunión": "una primera comunión",
+    "día de la madre": "el Día de la Madre",
+    "quince años": "unos quince años",
+    "regalo": "un regalo",
+}
+
+
+def _seguir_con_lo_anotado(coma: str, contexto: dict) -> str:
+    """JOY-94: sin modelo, un mensaje con un dato (ocasión o presupuesto) no recibe «no entendí»:
+    se confirma lo anotado y se hace la siguiente pregunta que falta."""
+    actual = intereses.activo(contexto) or contexto
+    ocasion, presupuesto = actual.get("ocasion"), actual.get("presupuesto")
+    frase = FRASE_DE_OCASION.get(ocasion, ocasion)
+    if ocasion and presupuesto:
+        anotado = f"es para {frase}, con un presupuesto de {presupuesto}"
+    elif ocasion:
+        anotado = f"es para {frase}"
+    else:
+        anotado = f"tu presupuesto es de {presupuesto}"
+    if not actual.get("categoria"):
+        siguiente = (
+            "¿Qué tipo de joya tienes en mente? Tenemos anillos, argollas, aretes, cadenas, "
+            "pulseras y dijes."
+        )
+    elif not actual.get("material"):
+        siguiente = "¿La prefieres en oro o en plata?"
+    else:
+        descripcion = _describir(actual)
+        siguiente = (
+            f"Aquí puedes ver las opciones de {descripcion} y cotizar al instante: "
+            f"{enlace_catalogo(actual)}"
+        )
+    return f"Anotado{coma}: {anotado}. {siguiente}"
+
+
 def redactar(intencion: str, nombre: str | None, contexto: dict) -> tuple[str, bool]:
     """Devuelve (texto de respuesta, si hay que pasar la conversación a un asesor)."""
     coma = f", {nombre}" if nombre else ""
@@ -87,6 +130,8 @@ def redactar(intencion: str, nombre: str | None, contexto: dict) -> tuple[str, b
             "cadena, pulsera…), te llevo directo a esa sección.",
             False,
         )
+    if intencion == "seguimiento":
+        return _seguir_con_lo_anotado(coma, contexto), False
     if intencion == "catalogo":
         return (
             f"Con gusto{coma}. Aquí puedes ver el catálogo y filtrar por categoría, "
@@ -314,11 +359,20 @@ def atender_mensaje(
         else:
             origen = "reglas"
             intencion = clasificar(texto, proveedor)
+            # Sin modelo nadie anota la ocasión ni el presupuesto: lo hace el motor de reglas.
+            de_compra = ctx.ocasion_y_presupuesto(texto)
+            if de_compra:
+                cliente.contexto_cualificacion = intereses.anotar(
+                    cliente.contexto_cualificacion, **de_compra
+                )
             if intencion == "otro" and (
                 datos.contexto.get("categoria") or datos.contexto.get("material")
             ):
                 # Mencionó una joya o un material sin pedir nada concreto: le mostramos el catálogo.
                 intencion = "catalogo"
+            elif intencion == "otro" and de_compra:
+                # Dio un dato (ocasión o presupuesto): se anota y se sigue, no «no entendí».
+                intencion = "seguimiento"
             respuesta, escalar = redactar(
                 intencion, cliente.nombre_preferido, cliente.contexto_cualificacion or {}
             )

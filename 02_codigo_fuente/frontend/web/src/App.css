@@ -2164,9 +2164,9 @@ button.enlace {
   gap: 14px;
 }
 
-/* Seguridad del agente (JOY-74): ocupa la fila completa, debajo de los demás. */
+/* Seguridad del agente (JOY-74): tarjeta doble, para que su nota se lea en una línea. */
 .indicador.ancho {
-  grid-column: 1 / -1;
+  grid-column: span 2;
 }
 
 .indicador {
@@ -2410,6 +2410,10 @@ button.enlace {
   .indicadores,
   .graficos {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .indicador.ancho {
+    grid-column: auto;
   }
 
   .indicador-valor {

@@ -14,6 +14,7 @@ Si el modelo falla, el servicio vuelve al motor de reglas.
 import logging
 import os
 import re
+import time
 from functools import lru_cache
 from dataclasses import dataclass, field
 from decimal import Decimal
@@ -111,6 +112,7 @@ class _Estado:
         self.fotos: list[Saliente] = []  # tarjetas con foto y precio que acompañan a la lista
         self.herramientas: list[str] = []
         self.origen = "modelo"  # pasa a "respaldo" si el modelo principal falla
+        self.reintento_usado = False  # un solo reintento por respuesta, para no demorarla
 
 
 def _segundos_de_espera() -> float:
@@ -425,13 +427,50 @@ def _historial(
     return mensajes
 
 
+# Errores pasajeros de Google: el modelo está saturado (503) o no respondió a tiempo (504).
+_PASAJEROS = ("503", "unavailable", "high demand", "overloaded", "504", "deadline", "timed out", "timeout")
+REINTENTO_POR_DEFECTO = 1.5
+
+
+def es_pasajero(error: Exception) -> bool:
+    texto = f"{type(error).__name__} {error}".lower()
+    return any(marca in texto for marca in _PASAJEROS)
+
+
+def segundos_antes_de_reintentar() -> float:
+    """AGENTE_REINTENTO_SEGUNDOS (por defecto 1,5 s); 0 desactiva el reintento."""
+    try:
+        valor = float(os.getenv("AGENTE_REINTENTO_SEGUNDOS", "").strip() or REINTENTO_POR_DEFECTO)
+    except ValueError:
+        return REINTENTO_POR_DEFECTO
+    return min(max(valor, 0.0), 5.0)
+
+
 def _invocar(principal, respaldo, mensajes: list[BaseMessage], estado: _Estado):
-    """Pregunta al modelo principal; si falla (503 saturado, 504 sin tiempo), al de respaldo."""
+    """Pregunta al modelo principal. Si está saturado un momento (503/504), espera un poco y
+    reintenta una vez (JOY-94): muchos picos de Google duran segundos. Si vuelve a fallar, o el
+    error no es pasajero, contesta el de respaldo."""
     try:
         return principal.invoke(mensajes)
     except Exception as error:
+        primero = error
+        espera = segundos_antes_de_reintentar()
+        if es_pasajero(error) and espera > 0 and not estado.reintento_usado:
+            estado.reintento_usado = True
+            logger.warning(
+                "El modelo principal está saturado (%s); se reintenta en %.1f s",
+                sin_claves(str(error))[:120],
+                espera,
+            )
+            time.sleep(espera)
+            try:
+                respuesta = principal.invoke(mensajes)
+                logger.info("El reintento del modelo principal respondió")
+                return respuesta
+            except Exception as otra:
+                error = otra
         if respaldo is None:
-            raise
+            raise primero from None
         logger.warning(
             "El modelo principal falló (%s: %s); contesta el de respaldo",
             type(error).__name__,
@@ -441,7 +480,7 @@ def _invocar(principal, respaldo, mensajes: list[BaseMessage], estado: _Estado):
         try:
             return respaldo.invoke(mensajes)
         except Exception:
-            raise error from None  # se informa el primer error, como antes
+            raise primero from None  # se informa el primer error, como antes
 
 
 def responder(
