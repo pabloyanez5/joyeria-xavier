@@ -47,6 +47,8 @@ def sin_esperas_de_red(monkeypatch):
     from app import meta_envio
 
     monkeypatch.setattr(meta_envio.time, "sleep", lambda s: None)
+    # Ni el reintento del agente ante un modelo saturado (JOY-94).
+    monkeypatch.setenv("AGENTE_REINTENTO_SEGUNDOS", "0.01")
 
 
 class _AdminDePruebas:

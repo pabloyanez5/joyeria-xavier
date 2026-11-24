@@ -60,6 +60,7 @@ services:
       JOYERIA_MESSENGER: ${JOYERIA_MESSENGER:-}
       AGENTE_LIMITE_MENSAJES: ${AGENTE_LIMITE_MENSAJES:-15}
       AGENTE_LIMITE_SEGUNDOS: ${AGENTE_LIMITE_SEGUNDOS:-60}
+      AGENTE_REINTENTO_SEGUNDOS: ${AGENTE_REINTENTO_SEGUNDOS:-1.5}
       LOG_DIR: /app/logs
     volumes:
       # La bitácora sobrevive a cada deploy (los logs de Docker se borran al recrear el contenedor).

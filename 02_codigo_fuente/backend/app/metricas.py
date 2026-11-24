@@ -25,6 +25,8 @@ from app.models import (
 from app.ordenes import ETAPAS_CON_CANCELADA
 
 # Los indicadores son de lectura y solo para la dirección (RF-06).
+ORIGENES = ("modelo", "respaldo", "reglas", "menu", "guardrail")
+
 router = APIRouter(
     prefix="/metricas", tags=["metricas"], dependencies=[Depends(requiere("direccion"))]
 )
@@ -56,6 +58,10 @@ class Metricas(BaseModel):
     conversaciones_por_dia: list[DiaConversaciones]
     # Lo que bloqueó la seguridad del agente en el periodo, por motivo (JOY-74).
     intentos_bloqueados: dict[str, int]
+    # Quién redactó las respuestas del agente (JOY-94): modelo, respaldo, reglas, menú o
+    # seguridad; y qué parte de las respuestas libres salió de la IA (modelo o respaldo).
+    respuestas_por_origen: dict[str, int]
+    respuestas_con_ia: float | None
 
 
 def _como_utc(valor: datetime) -> datetime:
@@ -100,6 +106,26 @@ def metricas(
         for direccion, autor, cuantos in filas:
             clave = "cliente" if direccion == "entrante" else (autor or "agente")
             mensajes[clave] = mensajes.get(clave, 0) + cuantos
+
+    origenes = {o: 0 for o in ORIGENES}
+    if ids:
+        filas = session.execute(
+            select(Mensaje.origen, func.count())
+            .where(
+                Mensaje.conversacion_id.in_(ids),
+                Mensaje.direccion == "saliente",
+                Mensaje.autor.is_(None),
+                Mensaje.origen.is_not(None),
+            )
+            .group_by(Mensaje.origen)
+        ).all()
+        for origen, cuantos in filas:
+            origenes[origen] = origenes.get(origen, 0) + cuantos
+    # El menú (botones) y la seguridad responden igual con o sin IA: no cuentan aquí.
+    libres = origenes["modelo"] + origenes["respaldo"] + origenes["reglas"]
+    con_ia = (
+        round((origenes["modelo"] + origenes["respaldo"]) * 100 / libres, 1) if libres else None
+    )
 
     conteo = dict(
         session.execute(select(Orden.etapa_actual, func.count()).group_by(Orden.etapa_actual)).all()
@@ -147,4 +173,6 @@ def metricas(
             DiaConversaciones(dia=d, conversaciones=n) for d, n in por_dia.items()
         ],
         intentos_bloqueados=conteo_por_motivo(session, desde),
+        respuestas_por_origen=origenes,
+        respuestas_con_ia=con_ia,
     )

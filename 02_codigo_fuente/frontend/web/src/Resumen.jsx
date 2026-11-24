@@ -150,6 +150,9 @@ export default function Resumen() {
 
   const tasa = datos.tasa_resolucion_agente
   const esperan = datos.por_estado.escalada ?? 0
+  // JOY-94: qué parte de las respuestas libres salió de la IA (el resto, del motor de reglas).
+  const origen = datos.respuestas_por_origen ?? {}
+  const conIa = datos.respuestas_con_ia
   const intentos = datos.intentos_bloqueados ?? {}
   const bloqueados = Object.values(intentos).reduce((suma, n) => suma + n, 0)
   const activas = datos.ordenes_por_etapa
@@ -202,6 +205,18 @@ export default function Resumen() {
           valor={duracion(datos.horas_promedio_entrega)}
           nota="Desde que se crea la orden hasta que se entrega"
         />
+        <Indicador
+          titulo="Respuestas con IA"
+          valor={conIa === null || conIa === undefined ? '—' : `${numero.format(conIa)} %`}
+          nota={`${origen.modelo ?? 0} del modelo · ${origen.respaldo ?? 0} del respaldo · ${origen.reglas ?? 0} con reglas (sin IA)`}
+          destacado={conIa !== null && conIa !== undefined && conIa < 90}
+        >
+          {conIa !== null && conIa !== undefined && (
+            <span className="medidor" aria-hidden="true">
+              <span style={{ width: `${conIa}%` }} />
+            </span>
+          )}
+        </Indicador>
         <Indicador titulo="Clientes" valor={datos.clientes} nota="Registrados por todos los canales" />
         <Indicador
           titulo="Intentos bloqueados"
