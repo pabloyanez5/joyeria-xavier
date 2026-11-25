@@ -38,6 +38,8 @@ REGLAS: list[tuple[str, list[str]]] = [
             r"\bencargo\b",
             r"cuando (estara|esta|va a estar|me entregan|entregan|llega)",
             r"ya esta (listo|lista)",
+            # «¿Mi anillo ya está?» (JOY-76)
+            r"\bmis? (anillos?|argollas?|cadenas?|pulseras?|aretes?|dijes?|joyas?)\b.*\bya (esta|estan|llego|llegaron|salio)\b",
             r"como va (mi|el)",
             r"\bretirar\b",
         ],
@@ -51,6 +53,9 @@ REGLAS: list[tuple[str, list[str]]] = [
             r"\bvalor\b",
             r"\bpresupuesto\b",
             r"cuanto (cuesta|cuestan|vale|valen|sale|salen|saldria|seria|cobran)",
+            # «¿cuánto me saldría…?», «cuánto tendría que pagar» (JOY-76)
+            r"cuanto (me |nos |le )?(cuesta|cuestan|vale|valen|sale|salen|saldria|saldrian|costaria|cobrarian)",
+            r"cuanto (tendria|tengo|tendriamos|habria) que pagar",
             r"configur",
         ],
     ),
@@ -65,6 +70,7 @@ REGLAS: list[tuple[str, list[str]]] = [
             r"\b(tienen|venden|manejan)\b",
             r"\bver (sus |las |los )?(joyas|anillos|cadenas|pulseras|aretes|argollas|dijes|productos|opciones)\b",
             r"\bmuestr(a|ame|en)\b",
+            r"\bregal(o|os|ar)\b",  # «busco un regalo para mi esposa» (JOY-76)
         ],
     ),
     (
@@ -106,7 +112,7 @@ PROMPT_CLASIFICADOR = (
     "Eres el clasificador de mensajes de una joyería. Clasifica el mensaje del "
     "cliente en UNA de estas intenciones y responde solo con la etiqueta, sin "
     "explicaciones:\n"
-    "- saludo: solo saluda.\n"
+    "- saludo: solo saluda (aunque pregunte si hay alguien atendiendo).\n"
     "- cotizar: pide precio o cotización de una joya.\n"
     "- catalogo: quiere ver o conocer las joyas o modelos disponibles, o busca ideas de regalo.\n"
     "- estado_pedido: pregunta por un pedido u orden que ya hizo.\n"
