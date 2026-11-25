@@ -13,6 +13,7 @@ tarjetas, correos y teléfonos que escribe el cliente no se mandan al modelo.
 """
 import re
 import unicodedata
+from decimal import Decimal, InvalidOperation
 
 RESPUESTA_COMERCIAL = (
     "Los descuentos, promociones y condiciones especiales los define un asesor de la joyería. "
@@ -245,3 +246,47 @@ def ocultar_datos_personales(texto: str) -> str:
         return DATO_OCULTO if len(_digitos(m.group(0))) >= _MIN_DIGITOS_TELEFONO else m.group(0)
 
     return _TELEFONO.sub(telefono, texto)
+
+
+# --- precios que el modelo no puede inventar (JOY-76) ---
+
+_MONTO_CON_MONEDA = re.compile(
+    r"(?:\$|usd|us\$)\s?(\d[\d.,]*\d|\d)|(\d[\d.,]*\d|\d)\s?(?:\$|usd|d[oó]lares|dolares)",
+    re.IGNORECASE,
+)
+_NUMERO = re.compile(r"\d[\d.,]*\d|\d")
+
+
+def _a_monto(texto: str) -> Decimal | None:
+    """«1,250.00», «1.250,00», «41.20», «41,20» o «150» como número."""
+    limpio = texto.strip(".,")
+    if "," in limpio and "." in limpio:
+        decimal = "," if limpio.rfind(",") > limpio.rfind(".") else "."
+        miles = "." if decimal == "," else ","
+        limpio = limpio.replace(miles, "").replace(decimal, ".")
+    elif "," in limpio or "." in limpio:
+        separador = "," if "," in limpio else "."
+        partes = limpio.split(separador)
+        if len(partes) == 2 and len(partes[1]) <= 2:
+            limpio = f"{partes[0]}.{partes[1]}"  # decimales
+        else:
+            limpio = "".join(partes)  # separador de miles
+    try:
+        return Decimal(limpio)
+    except InvalidOperation:
+        return None
+
+
+def precios_sin_respaldo(respuesta: str, permitido: str) -> list[Decimal]:
+    """Montos de dinero que escribió el modelo y que no aparecen en lo que sí sabe: lo que
+    devolvieron las herramientas (catálogo, órdenes) y lo que dijo el cliente (su presupuesto).
+    Se tolera el redondeo a dólares enteros («desde $41» por $41,20)."""
+    conocidos = {m for m in (_a_monto(n) for n in _NUMERO.findall(permitido)) if m is not None}
+    sin_respaldo = []
+    for encontrado in _MONTO_CON_MONEDA.finditer(respuesta):
+        monto = _a_monto(encontrado.group(1) or encontrado.group(2))
+        if monto is None or monto == 0:
+            continue
+        if not any(abs(monto - c) < 1 for c in conocidos):
+            sin_respaldo.append(monto)
+    return sin_respaldo

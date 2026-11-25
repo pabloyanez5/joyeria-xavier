@@ -49,3 +49,21 @@ def test_si_el_modelo_responde_algo_raro_usa_las_reglas():
 
 def test_si_el_modelo_falla_usa_las_reglas():
     assert clasificar("Hola", ModeloFalso(error=True)) == "saludo"
+
+
+# JOY-76: frases nuevas (fuera de los 50 casos) para no ajustar las reglas solo a ese set.
+@pytest.mark.parametrize(
+    "texto, esperada",
+    [
+        ("¿cuánto nos costaría un anillo de compromiso?", "cotizar"),
+        ("cuánto tengo que pagar por una cadena en plata", "cotizar"),
+        ("¿mi cadena ya llegó?", "estado_pedido"),
+        ("¿mis aretes ya están?", "estado_pedido"),
+        ("quiero regalar algo a mi mamá", "catalogo"),
+        ("Saludos", "saludo"),
+    ],
+)
+def test_frases_nuevas_con_reglas(texto, esperada):
+    from app.agente.intenciones import clasificar_con_reglas
+
+    assert clasificar_con_reglas(texto) == esperada

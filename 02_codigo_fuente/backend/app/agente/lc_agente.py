@@ -86,6 +86,12 @@ herramienta de información de la joyería.
 """
 
 
+AVISO_PRECIOS = (
+    "(Aviso interno, no lo menciones) Escribiste precios que no salieron de la herramienta del "
+    "catálogo. Llama ahora a la herramienta del catálogo y usa solo los precios que te devuelva; "
+    "si no necesitas dar un precio, responde sin montos."
+)
+
 AVISO_RESPUESTA_VACIA = (
     "(Aviso interno, no lo menciones) Ya tienes lo necesario. Responde ahora al cliente en 2 o 3 "
     "frases cortas y haz una sola pregunta para seguir conociendo lo que busca."
@@ -411,6 +417,21 @@ def _a_texto(contenido) -> str:
     return "".join(partes)
 
 
+def _lo_que_sabe(mensajes: list[BaseMessage]) -> str:
+    """Todo lo que el modelo recibió (no lo que escribió): de ahí pueden salir los precios."""
+    return "\n".join(str(m.content) for m in mensajes if not isinstance(m, AIMessage))
+
+
+def _sin_precio(contexto: dict) -> str:
+    """Si el modelo insiste en precios sin respaldo, se responde con el catálogo real."""
+    params = {k: contexto[k] for k in ("categoria", "material") if contexto.get(k)}
+    enlace = _url_web() + (f"/?{urlencode(params)}" if params else "")
+    return (
+        "Los precios exactos los ves al instante en nuestro catálogo, según el modelo y el "
+        f"material: {enlace} ¿Qué modelo te gustaría cotizar?"
+    )
+
+
 def _historial(
     session: Session, conversacion_id: int, hasta_id: int | None, nombre: str | None = None
 ) -> list[BaseMessage]:
@@ -546,26 +567,28 @@ def responder(
         HumanMessage(seguridad.ocultar_datos_personales(texto)),
     ]
 
-    respuesta = ""
-    for _ in range(MAX_RONDAS):
-        ia = _invocar(con_herramientas, respaldo_con_herramientas, mensajes, estado)
-        mensajes.append(ia)
-        if not ia.tool_calls:
-            respuesta = _a_texto(ia.content).strip()
-            break
-        for llamada in ia.tool_calls:
-            estado.herramientas.append(llamada["name"])
-            herramienta = por_nombre.get(llamada["name"])
-            if herramienta is None:
-                salida = f"La herramienta {llamada['name']} no existe."
-            else:
-                try:
-                    salida = herramienta.invoke(llamada["args"])
-                except Exception as e:  # una herramienta que falla no debe tumbar la respuesta
-                    logger.exception("Falló la herramienta %s", llamada["name"])
-                    salida = f"No se pudo completar la consulta ({type(e).__name__})."
-            mensajes.append(ToolMessage(content=str(salida), tool_call_id=llamada["id"]))
+    def rondas() -> str:
+        """El modelo usa las herramientas que necesite y al final escribe su respuesta."""
+        for _ in range(MAX_RONDAS):
+            ia = _invocar(con_herramientas, respaldo_con_herramientas, mensajes, estado)
+            mensajes.append(ia)
+            if not ia.tool_calls:
+                return _a_texto(ia.content).strip()
+            for llamada in ia.tool_calls:
+                estado.herramientas.append(llamada["name"])
+                herramienta = por_nombre.get(llamada["name"])
+                if herramienta is None:
+                    salida = f"La herramienta {llamada['name']} no existe."
+                else:
+                    try:
+                        salida = herramienta.invoke(llamada["args"])
+                    except Exception as e:  # una herramienta que falla no debe tumbar la respuesta
+                        logger.exception("Falló la herramienta %s", llamada["name"])
+                        salida = f"No se pudo completar la consulta ({type(e).__name__})."
+                mensajes.append(ToolMessage(content=str(salida), tool_call_id=llamada["id"]))
+        return ""
 
+    respuesta = rondas()
     if not respuesta:
         # Gemini a veces calla después de usar una herramienta (por ejemplo, al guardar un dato).
         # Se le pide una vez, sin herramientas, que le conteste al cliente.
@@ -582,10 +605,25 @@ def responder(
         respuesta = _a_texto(respaldo.invoke(mensajes).content).strip()
     if not respuesta:
         raise ValueError("El modelo no produjo una respuesta de texto")
+
+    # Precios verificados (JOY-76): todo monto debe venir del catálogo, de una orden o del cliente.
+    regla_de_precio = None
+    if seguridad.precios_sin_respaldo(respuesta, _lo_que_sabe(mensajes)):
+        logger.warning("El modelo escribió precios que no vienen del catálogo; se le pide consultarlo")
+        mensajes.append(HumanMessage(AVISO_PRECIOS))
+        try:
+            corregida = rondas()
+        except Exception:
+            corregida = ""
+        if not corregida or seguridad.precios_sin_respaldo(corregida, _lo_que_sabe(mensajes)):
+            regla_de_precio = "precio_no_verificado"
+            corregida = _sin_precio(contexto)
+        respuesta = corregida
     # Guardrail de salida (RNF-01 y RNF-09): sin instrucciones internas ni datos ajenos. Va antes
     # de revisar los enlaces: si no, el dominio de un correo inventado se tomaba por un enlace.
     de_herramientas = "\n".join(str(m.content) for m in mensajes if isinstance(m, ToolMessage))
     protegida, regla_de_salida = seguridad.regla_de_salida(respuesta, de_herramientas)
+    regla_de_salida = regla_de_salida or regla_de_precio
     if regla_de_salida:
         logger.warning(
             "Guardrail de salida: respuesta corregida (%s, cliente %s)", regla_de_salida, cliente.id
