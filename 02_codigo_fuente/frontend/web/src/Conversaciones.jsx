@@ -21,6 +21,8 @@ const FILTROS = [
   { id: 'activa', titulo: 'Con el agente', estado: 'activa' },
   { id: 'cerrada', titulo: 'Cerradas', estado: 'cerrada' },
 ]
+// Filtro «Mías» (JOY-84): las escaladas que atiende el asesor que está en el panel.
+const MIAS = 'mias'
 const formatoHoraCorta = new Intl.DateTimeFormat('es-EC', { timeStyle: 'short' })
 const formatoDia = new Intl.DateTimeFormat('es-EC', { day: '2-digit', month: '2-digit' })
 // Hora si fue hoy; si no, el día.
@@ -57,7 +59,7 @@ function Datos({ items }) {
   )
 }
 
-export default function Conversaciones({ onCrearOrden }) {
+export default function Conversaciones({ usuario, onCrearOrden }) {
   const [lista, setLista] = useState([])
   const [elegida, setElegida] = useState(null)
   const [detalle, setDetalle] = useState(null)
@@ -68,6 +70,7 @@ export default function Conversaciones({ onCrearOrden }) {
   const [ocupado, setOcupado] = useState(false)
   const [filtro, setFiltro] = useState(null) // null = todas
   const caja = useRef(null)
+  const [asesores, setAsesores] = useState([])
   const formulario = useRef(null)
   const soltarTeclado = useRef(null)
 
@@ -176,8 +179,23 @@ export default function Conversaciones({ onCrearOrden }) {
     if (caja.current) caja.current.scrollTop = caja.current.scrollHeight
   }, [idActual, totalMensajes])
 
+  const esMia = (c) => c.asesor_id === usuario?.id && c.estado !== 'cerrada'
   const cuenta = (estado) => lista.filter((c) => !estado || c.estado === estado).length
-  const visibles = lista.filter((c) => !filtro || c.estado === filtro)
+  const visibles = lista.filter((c) => (filtro === MIAS ? esMia(c) : !filtro || c.estado === filtro))
+  const esAsesor = usuario?.rol === 'asesor'
+
+  // Asesores activos para reasignar (JOY-84); se piden al abrir una conversación escalada.
+  useEffect(() => {
+    if (!d || d.estado === 'cerrada') return undefined
+    let vigente = true
+    pedir('/api/conversaciones/asesores/activos')
+      .then(leer)
+      .then((datos) => vigente && setAsesores(datos))
+      .catch(() => {})
+    return () => {
+      vigente = false
+    }
+  }, [d?.id, d?.estado, d?.asesor_id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   function elegir(id) {
     setElegida(id)
@@ -220,6 +238,11 @@ export default function Conversaciones({ onCrearOrden }) {
           </button>
         </div>
         <div className="conv-filtros" role="group" aria-label="Filtrar conversaciones">
+          {esAsesor && (
+            <button type="button" aria-pressed={filtro === MIAS} onClick={() => setFiltro(MIAS)}>
+              Mías · {lista.filter(esMia).length}
+            </button>
+          )}
           {FILTROS.map((f) => (
             <button key={f.id} type="button" aria-pressed={filtro === f.estado} onClick={() => setFiltro(f.estado)}>
               {f.titulo} · {cuenta(f.estado)}
@@ -250,7 +273,18 @@ export default function Conversaciones({ onCrearOrden }) {
                     {c.ultimo_mensaje ?? 'Sin mensajes'}
                   </span>
                   <span className="conv-fila">
-                    <Estado valor={c.estado} />
+                    {c.estado === 'escalada' ? (
+                      // JOY-84: en la bandeja, la conversación escalada dice quién la atiende.
+                      <span className="insignia estado-escalada">
+                        {c.asesor_id === usuario?.id
+                          ? 'Te espera a ti'
+                          : c.asesor
+                            ? `Con ${c.asesor.split(' ')[0]}`
+                            : 'Espera · sin asignar'}
+                      </span>
+                    ) : (
+                      <Estado valor={c.estado} />
+                    )}
                     <span className="conv-canal">{NOMBRE_CANAL[c.canal] ?? c.canal}</span>
                   </span>
                 </span>
@@ -295,6 +329,45 @@ export default function Conversaciones({ onCrearOrden }) {
                 )}
               </div>
             </header>
+
+            {d.estado !== 'cerrada' && (d.estado === 'escalada' || d.asesor) && (
+              <div className="conv-asignacion">
+                <span>
+                  {d.asesor
+                    ? <>Atiende: <strong>{d.asesor_id === usuario?.id ? `${d.asesor} (tú)` : d.asesor}</strong></>
+                    : <strong>Sin asignar · en la cola general</strong>}
+                </span>
+                {esAsesor && d.asesor_id !== usuario?.id && (
+                  <button type="button" className="boton" disabled={ocupado} onClick={() => ejecutar('tomar', null, 'Ahora atiendes tú esta conversación.')}>
+                    Tomar
+                  </button>
+                )}
+                <label>
+                  <span className="solo-lectores">Reasignar a</span>
+                  <select
+                    value=""
+                    disabled={ocupado}
+                    onChange={(e) => {
+                      const valor = e.target.value
+                      if (!valor) return
+                      const asesorId = valor === 'cola' ? null : Number(valor)
+                      const nombre = asesores.find((a) => a.id === asesorId)?.nombre
+                      ejecutar('asignar', { asesor_id: asesorId }, nombre ? `Conversación asignada a ${nombre}.` : 'Conversación devuelta a la cola general.')
+                    }}
+                  >
+                    <option value="">Reasignar a…</option>
+                    {asesores
+                      .filter((a) => a.id !== d.asesor_id)
+                      .map((a) => (
+                        <option key={a.id} value={a.id}>
+                          {a.nombre} ({a.carga} {a.carga === 1 ? 'abierta' : 'abiertas'})
+                        </option>
+                      ))}
+                    {d.asesor_id !== null && <option value="cola">Cola general (sin asignar)</option>}
+                  </select>
+                </label>
+              </div>
+            )}
 
             {d.motivo_escalamiento && (
               <p className="conv-motivo">Motivo de la derivación: {d.motivo_escalamiento}</p>

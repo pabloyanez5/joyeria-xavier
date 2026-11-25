@@ -156,7 +156,7 @@ function PanelInterno({ usuario, tema, onAlternarTema }) {
 
       {vista === 'resumen' && <Resumen />}
 
-      {vista === 'conversaciones' && <Conversaciones onCrearOrden={crearDesdeConversacion} />}
+      {vista === 'conversaciones' && <Conversaciones usuario={usuario} onCrearOrden={crearDesdeConversacion} />}
 
       {vista === 'ordenes' && (
         <>

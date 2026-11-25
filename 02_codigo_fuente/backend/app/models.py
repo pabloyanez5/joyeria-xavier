@@ -65,6 +65,9 @@ class Conversacion(Base):
     creado_en: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
+    # Asesor que atiende la conversación escalada (JOY-84); None = cola general.
+    asesor_id: Mapped[int | None] = mapped_column(ForeignKey("usuarios.id"), index=True)
+    asignada_en: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     actualizado_en: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
@@ -234,3 +237,19 @@ class IntentoBloqueado(Base):
     motivo: Mapped[str] = mapped_column(String(30))
     # Qué regla lo detectó (por ejemplo "pedir_prompt"); sin texto del cliente.
     regla: Mapped[str | None] = mapped_column(String(40))
+
+
+class AsignacionConversacion(Base):
+    """Cada vez que una conversación cambia de asesor (JOY-84): a quién, quién lo hizo y cómo."""
+
+    __tablename__ = "asignaciones_conversacion"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    conversacion_id: Mapped[int] = mapped_column(ForeignKey("conversaciones.id"), index=True)
+    asesor_id: Mapped[int | None] = mapped_column(ForeignKey("usuarios.id"))  # None = cola general
+    usuario_id: Mapped[int | None] = mapped_column(ForeignKey("usuarios.id"))  # None = el sistema
+    # automatica | tomada | reasignada | liberada
+    tipo: Mapped[str] = mapped_column(String(20))
+    creado_en: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
