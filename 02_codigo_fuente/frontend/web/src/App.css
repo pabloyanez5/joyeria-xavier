@@ -2935,3 +2935,27 @@ button.enlace {
     font-size: max(16px, 1em);
   }
 }
+
+/* ---- JOY-84: quién atiende cada conversación ---- */
+.conv-asignacion {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 18px;
+  font-size: 0.9rem;
+  background: var(--tenue);
+  border-bottom: 1px solid var(--linea);
+}
+
+.conv-asignacion > span {
+  margin-right: auto;
+}
+
+.conv-asignacion .boton {
+  padding: 6px 12px;
+}
+
+.conv-asignacion select {
+  padding: 6px 8px;
+}

@@ -11,6 +11,7 @@ from app.agente import contexto as ctx
 from app.agente import estado_ordenes, intereses, menu, proteccion, seguridad
 from app.agente.intenciones import clasificar
 from app.agente.llm import ProveedorLLM
+from app import asignacion
 from app.bitacora import sin_claves
 from app.cache import CacheIdentidad
 from app.clientes import identificar_cliente
@@ -406,6 +407,7 @@ def atender_mensaje(
     )
     if escalar:
         conversacion.estado = "escalada"
+        asignacion.asignar_al_escalar(session, conversacion)  # JOY-84: a un asesor o a la cola
         session.add(
             TransicionConversacion(
                 conversacion_id=conversacion.id,

@@ -13,13 +13,14 @@ from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
+from app import asignacion
 from app.acceso import requiere
 from app.agente import intereses
 from app.clientes import nombre_para_saludar
 from app.db import get_session
 from app.meta_envio import Enviador, ErrorMeta
 from app.models import (
-    Cliente, Conversacion, Mensaje, Orden, TransicionConversacion, Usuario,
+    AsignacionConversacion, Cliente, Conversacion, Mensaje, Orden, TransicionConversacion, Usuario,
 )
 from app.ordenes import NOMBRE_DEL_CANAL, codigo_de_orden, nombre_de
 from app.webhook import get_enviador
@@ -54,6 +55,8 @@ class ConversacionResumen(BaseModel):
     ultimo_autor: str | None
     total_mensajes: int
     ordenes_activas: int
+    asesor_id: int | None = None  # quién la atiende (JOY-84); None = cola general
+    asesor: str | None = None
 
 
 class MensajeOut(BaseModel):
@@ -193,6 +196,8 @@ def _resumen(session: Session, c: Conversacion) -> ConversacionResumen:
         ultimo_autor=_autor(ultimo) if ultimo else None,
         total_mensajes=total or 0,
         ordenes_activas=activas or 0,
+        asesor_id=c.asesor_id,
+        asesor=_nombre_de_usuario(session, c.asesor_id),
     )
 
 
@@ -311,8 +316,10 @@ def _cambiar_estado(session: Session, c: Conversacion, nuevo: str) -> None:
 @router.get("", response_model=list[ConversacionResumen])
 def listar_conversaciones(
     estado: str | None = Query(None, description="activa, escalada o cerrada"),
+    mias: bool = Query(False, description="solo las que atiende el usuario"),
     limite: int = Query(50, ge=1, le=200),
     session: Session = Depends(get_session),
+    usuario: Usuario = Depends(puede_atender),
 ):
     """Las escaladas primero (esperan a una persona) y luego las más recientes."""
     if estado is not None and estado not in ESTADOS:
@@ -320,6 +327,8 @@ def listar_conversaciones(
     consulta = select(Conversacion)
     if estado:
         consulta = consulta.where(Conversacion.estado == estado)
+    if mias:
+        consulta = consulta.where(Conversacion.asesor_id == usuario.id)
     prioridad = case((Conversacion.estado == "escalada", 0), (Conversacion.estado == "activa", 1), else_=2)
     conversaciones = session.scalars(
         consulta.order_by(prioridad, Conversacion.actualizado_en.desc(), Conversacion.id.desc()).limit(limite)
@@ -391,6 +400,98 @@ def responder_como_asesor(
     )
     if conversacion.estado == "activa":
         _cambiar_estado(session, conversacion, "escalada")
+        if usuario.rol == asignacion.ROL_QUE_ATIENDE:
+            # Intervino por su cuenta: la conversación queda a su cargo.
+            asignacion.asignar(session, conversacion, usuario.id, "tomada", usuario.id)
+        else:
+            asignacion.asignar_al_escalar(session, conversacion)
     conversacion.actualizado_en = func.now()
     session.commit()
     return _detalle(session, conversacion)
+
+
+# --- asignación a un asesor (JOY-84) ---
+
+class AsesorOut(BaseModel):
+    id: int
+    nombre: str
+    carga: int  # conversaciones escaladas a su cargo
+
+
+class AsignacionIn(BaseModel):
+    asesor_id: int | None = None  # None = devolver a la cola general
+
+
+class AsignacionOut(BaseModel):
+    asesor: str | None
+    usuario: str | None  # quién la hizo; None = el sistema
+    tipo: str
+    creado_en: datetime | None
+
+
+@router.get("/asesores/activos", response_model=list[AsesorOut])
+def asesores_para_asignar(session: Session = Depends(get_session)):
+    """Asesores activos con cuántas conversaciones escaladas tienen (para reasignar)."""
+    return [
+        AsesorOut(id=a.id, nombre=a.nombre, carga=asignacion.carga_de(session, a.id))
+        for a in asignacion.asesores_activos(session)
+    ]
+
+
+@router.post("/{conversacion_id}/tomar", response_model=ConversacionDetalle)
+def tomar_conversacion(
+    conversacion_id: int,
+    session: Session = Depends(get_session),
+    usuario: Usuario = Depends(puede_atender),
+):
+    """El asesor que la abre se la queda."""
+    conversacion = _buscar(session, conversacion_id)
+    if conversacion.estado == "cerrada":
+        raise HTTPException(409, "La conversación está cerrada")
+    if usuario.rol != asignacion.ROL_QUE_ATIENDE:
+        raise HTTPException(403, "Solo un asesor puede tomar una conversación")
+    if conversacion.asesor_id != usuario.id:
+        asignacion.asignar(session, conversacion, usuario.id, "tomada", usuario.id)
+        session.commit()
+    return _detalle(session, conversacion)
+
+
+@router.post("/{conversacion_id}/asignar", response_model=ConversacionDetalle)
+def reasignar_conversacion(
+    conversacion_id: int,
+    datos: AsignacionIn,
+    session: Session = Depends(get_session),
+    usuario: Usuario = Depends(puede_atender),
+):
+    """Pasa la conversación a otro asesor activo, o la devuelve a la cola general."""
+    conversacion = _buscar(session, conversacion_id)
+    if conversacion.estado == "cerrada":
+        raise HTTPException(409, "La conversación está cerrada")
+    if datos.asesor_id is not None:
+        destino = session.get(Usuario, datos.asesor_id)
+        if destino is None or not destino.activo or destino.rol != asignacion.ROL_QUE_ATIENDE:
+            raise HTTPException(422, "Solo se puede asignar a un asesor activo")
+    if conversacion.asesor_id != datos.asesor_id:
+        tipo = "reasignada" if datos.asesor_id is not None else "liberada"
+        asignacion.asignar(session, conversacion, datos.asesor_id, tipo, usuario.id)
+        session.commit()
+    return _detalle(session, conversacion)
+
+
+@router.get("/{conversacion_id}/asignaciones", response_model=list[AsignacionOut])
+def historial_de_asignaciones(conversacion_id: int, session: Session = Depends(get_session)):
+    _buscar(session, conversacion_id)
+    filas = session.scalars(
+        select(AsignacionConversacion)
+        .where(AsignacionConversacion.conversacion_id == conversacion_id)
+        .order_by(AsignacionConversacion.id)
+    ).all()
+    return [
+        AsignacionOut(
+            asesor=_nombre_de_usuario(session, f.asesor_id),
+            usuario=_nombre_de_usuario(session, f.usuario_id),
+            tipo=f.tipo,
+            creado_en=f.creado_en,
+        )
+        for f in filas
+    ]
