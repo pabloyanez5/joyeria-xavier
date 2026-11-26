@@ -8,7 +8,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.agente import contexto as ctx
-from app.agente import estado_ordenes, intereses, menu, proteccion, seguridad
+from app.agente import escalamiento, estado_ordenes, intereses, menu, proteccion, seguridad
 from app.agente.intenciones import clasificar
 from app.agente.llm import ProveedorLLM
 from app import asignacion
@@ -220,6 +220,46 @@ def _recordar(cliente: Cliente, datos: ctx.Datos) -> None:
         )
 
 
+MOTIVO_POR_INTENCION = {
+    "asesor": "El cliente pidió hablar con un asesor",
+    "estado_pedido": "Pregunta por un pedido y no hay ninguna orden a su nombre",
+}
+
+
+def _escalar_por_motivo(
+    session: Session,
+    conversacion: Conversacion,
+    cliente: Cliente,
+    creado: bool,
+    escalado: "escalamiento.Escalamiento",
+) -> RespuestaAgente:
+    """Escalamiento automático: responde, deja el motivo en la ficha y asigna un asesor."""
+    cliente.contexto_cualificacion = {
+        **escalamiento.entendido(cliente.contexto_cualificacion or {}),
+        "motivo_escalamiento": escalado.motivo,
+    }
+    _anotar_intencion(cliente, ["asesor"])
+    session.add(
+        Mensaje(
+            conversacion_id=conversacion.id,
+            direccion="saliente",
+            contenido=escalado.respuesta,
+            origen="escalamiento",
+        )
+    )
+    conversacion.estado = "escalada"
+    asignacion.asignar_al_escalar(session, conversacion)
+    session.add(
+        TransicionConversacion(
+            conversacion_id=conversacion.id, estado_anterior="activa", estado_nuevo="escalada"
+        )
+    )
+    session.commit()
+    return RespuestaAgente(
+        escalado.respuesta, "asesor", conversacion.id, cliente.id, escalada=True, cliente_nuevo=creado
+    )
+
+
 def _respuesta_fija(
     session: Session,
     conversacion: Conversacion,
@@ -313,6 +353,12 @@ def atender_mensaje(
             seguridad.respuesta_para(regla), "guardrail_entrada",
         )
 
+    # Escalamiento automático (JOY-85): molestia, pedido sin herramienta o cotización fuera de
+    # rango pasan a un asesor sin llamar al modelo.
+    automatico = None if accion else escalamiento.antes_del_modelo(texto)
+    if automatico:
+        return _escalar_por_motivo(session, conversacion, cliente, creado, automatico)
+
     detectadas: list[str] = []
     if accion:
         # El cliente tocó un botón o una opción de una lista: no hay texto que interpretar.
@@ -385,6 +431,16 @@ def atender_mensaje(
                 )
                 if estado:
                     respuesta, escalar = estado, False
+            contexto = cliente.contexto_cualificacion or {}
+            if intencion == "otro":
+                # Segundo mensaje seguido que no entiende: pasa a un asesor (JOY-85).
+                contexto, no_entiende = escalamiento.no_entendido(contexto)
+                if no_entiende:
+                    intencion, respuesta, escalar = "asesor", no_entiende.respuesta, True
+                    contexto = {**contexto, "motivo_escalamiento": no_entiende.motivo}
+            else:
+                contexto = escalamiento.entendido(contexto)
+            cliente.contexto_cualificacion = contexto
             mensajes = menu.enriquecer(
                 session,
                 intencion,
@@ -406,6 +462,13 @@ def atender_mensaje(
         )
     )
     if escalar:
+        contexto = dict(cliente.contexto_cualificacion or {})
+        if not contexto.get("motivo_escalamiento"):
+            # El motor de reglas no anota motivo: se deja uno según lo que pasó (JOY-85).
+            contexto["motivo_escalamiento"] = MOTIVO_POR_INTENCION.get(
+                intencion, "El agente pasó la conversación a un asesor"
+            )
+            cliente.contexto_cualificacion = contexto
         conversacion.estado = "escalada"
         asignacion.asignar_al_escalar(session, conversacion)  # JOY-84: a un asesor o a la cola
         session.add(

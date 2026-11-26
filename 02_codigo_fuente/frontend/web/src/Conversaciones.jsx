@@ -12,6 +12,7 @@ const ORIGEN = {
   reglas: 'reglas',
   menu: 'menú',
   guardrail: 'seguridad',
+  escalamiento: 'derivación automática',
 }
 const ACTUALIZAR_CADA_MS = 8000
 const NOMBRE_CANAL = { whatsapp: 'WhatsApp', messenger: 'Messenger', instagram: 'Instagram' }
@@ -275,11 +276,11 @@ export default function Conversaciones({ usuario, onCrearOrden }) {
                   <span className="conv-fila">
                     {c.estado === 'escalada' ? (
                       // JOY-84: en la bandeja, la conversación escalada dice quién la atiende.
-                      <span className="insignia estado-escalada">
+                      <span className="insignia estado-escalada conv-con" title={c.asesor ?? undefined}>
                         {c.asesor_id === usuario?.id
                           ? 'Te espera a ti'
                           : c.asesor
-                            ? `Con ${c.asesor.split(' ')[0]}`
+                            ? `Con ${c.asesor}`
                             : 'Espera · sin asignar'}
                       </span>
                     ) : (
